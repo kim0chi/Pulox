@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.venv*/
+.env
+*.pyc
+
+# Data (keep structure, ignore files)
+data/raw_audio/*
+!data/raw_audio/.gitkeep
+data/transcripts/*
+!data/transcripts/.gitkeep
+data/corrections/*
+!data/corrections/.gitkeep
+
+# Models
+models/**/*.pt
+models/**/*.bin
+*.pth
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Node.js
+node_modules/
+package-lock.json
+
+# Build output
+dist/
+build/
+*.exe
+
+# Temporary files
+nul
+*.tmp

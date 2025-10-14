@@ -1,0 +1,24 @@
+# Minimal requirements for Pulox Electron App Backend
+# Install these first, then optionally install full requirements.txt
+
+# Core ASR - Latest stable version
+openai-whisper
+torch
+torchaudio
+
+# Audio processing essentials
+librosa
+soundfile
+numpy
+
+# FastAPI backend requirements
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Utilities
+tqdm
+python-dotenv
+
+# Evaluation (for ASR quality metrics)
+jiwer

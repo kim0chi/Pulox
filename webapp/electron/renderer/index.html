@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://127.0.0.1:8000; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:8000 ws://127.0.0.1:8000">
+  <title>Pulox - Transcript & Annotation Tool</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-content">
+      <h1 class="app-title">🎓 Pulox</h1>
+      <p class="app-subtitle">English-Tagalog Lecture Transcription</p>
+    </div>
+    <div class="header-status">
+      <span id="connection-status" class="status-indicator">●</span>
+      <span id="status-text">Connecting...</span>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar">
+      <button class="nav-btn active" data-tab="upload">
+        <span class="nav-icon">📤</span>
+        <span>Upload & Transcribe</span>
+      </button>
+      <button class="nav-btn" data-tab="transcripts">
+        <span class="nav-icon">📝</span>
+        <span>Transcripts</span>
+      </button>
+      <button class="nav-btn" data-tab="annotations">
+        <span class="nav-icon">✏️</span>
+        <span>Annotations</span>
+      </button>
+      <button class="nav-btn" data-tab="settings">
+        <span class="nav-icon">⚙️</span>
+        <span>Settings</span>
+      </button>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="content-area">
+      <!-- Upload & Transcribe Tab -->
+      <div id="upload-tab" class="tab-content active">
+        <h2>Upload & Transcribe Audio</h2>
+
+        <div class="upload-section">
+          <div class="drop-zone" id="drop-zone">
+            <div class="drop-zone-content">
+              <p class="drop-zone-icon">🎤</p>
+              <p class="drop-zone-text">Drag & drop audio file here</p>
+              <p class="drop-zone-subtext">or</p>
+              <button class="btn btn-primary" id="select-file-btn">Select File</button>
+              <input type="file" id="file-input" accept=".wav,.mp3,.m4a,.flac,.ogg,.webm" style="display: none;">
+              <p class="drop-zone-info">Supported: WAV, MP3, M4A, FLAC, OGG, WEBM</p>
+            </div>
+          </div>
+
+          <div id="file-info" class="file-info" style="display: none;">
+            <h3>Selected File</h3>
+            <p><strong>Name:</strong> <span id="file-name"></span></p>
+            <p><strong>Size:</strong> <span id="file-size"></span></p>
+
+            <div class="transcription-options">
+              <div class="form-group">
+                <label for="language-select">Language</label>
+                <select id="language-select">
+                  <option value="">Auto-detect</option>
+                  <option value="en">English</option>
+                  <option value="tl">Tagalog/Filipino</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="model-select">Model Size</label>
+                <select id="model-select">
+                  <option value="tiny">Tiny (Fastest, Less Accurate)</option>
+                  <option value="base" selected>Base (Recommended)</option>
+                  <option value="small">Small (Slower, More Accurate)</option>
+                  <option value="medium">Medium (Very Slow)</option>
+                </select>
+              </div>
+            </div>
+
+            <button class="btn btn-success btn-large" id="transcribe-btn">
+              Start Transcription
+            </button>
+          </div>
+
+          <div id="progress-section" class="progress-section" style="display: none;">
+            <h3>Transcribing...</h3>
+            <div class="progress-bar">
+              <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <p id="progress-text" class="progress-text">Uploading file...</p>
+          </div>
+
+          <div id="result-section" class="result-section" style="display: none;">
+            <h3>Transcription Complete!</h3>
+            <div class="result-info">
+              <p><strong>Language:</strong> <span id="result-language"></span></p>
+              <p><strong>Duration:</strong> <span id="result-duration"></span> seconds</p>
+            </div>
+            <div class="transcript-preview">
+              <h4>Transcript Preview</h4>
+              <div id="transcript-text" class="transcript-text"></div>
+            </div>
+            <div class="result-actions">
+              <button class="btn btn-primary" id="annotate-btn">Annotate This Transcript</button>
+              <button class="btn btn-secondary" id="upload-another-btn">Upload Another File</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transcripts Tab -->
+      <div id="transcripts-tab" class="tab-content">
+        <h2>Transcripts</h2>
+        <div class="toolbar">
+          <button class="btn btn-secondary" id="refresh-transcripts-btn">🔄 Refresh</button>
+        </div>
+        <div id="transcripts-list" class="transcripts-list">
+          <p class="loading-text">Loading transcripts...</p>
+        </div>
+      </div>
+
+      <!-- Annotations Tab -->
+      <div id="annotations-tab" class="tab-content">
+        <h2>Annotation Editor</h2>
+
+        <div id="annotation-selector" class="annotation-selector">
+          <p>Select a transcript from the Transcripts tab to begin annotation.</p>
+        </div>
+
+        <div id="annotation-editor" class="annotation-editor" style="display: none;">
+          <div class="editor-header">
+            <h3 id="annotation-title">Annotating: <span id="current-transcript-id"></span></h3>
+            <button class="btn btn-secondary" id="play-audio-btn">🔊 Play Audio</button>
+          </div>
+
+          <div class="editor-panels">
+            <div class="editor-panel">
+              <h4>Original Transcript</h4>
+              <textarea id="original-text" class="editor-textarea" readonly></textarea>
+            </div>
+
+            <div class="editor-panel">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h4 style="margin: 0;">Corrected Transcript</h4>
+                <button class="btn btn-secondary btn-small" id="auto-correct-btn" title="Automatically suggest corrections">
+                  🔧 Auto-Correct
+                </button>
+              </div>
+              <textarea id="corrected-text" class="editor-textarea"></textarea>
+            </div>
+          </div>
+
+          <div class="annotation-metadata">
+            <h4>Metadata</h4>
+            <div class="metadata-grid">
+              <div class="form-group">
+                <label for="annotator-name">Your Name</label>
+                <input type="text" id="annotator-name" placeholder="Annotator name">
+              </div>
+
+              <div class="form-group">
+                <label for="subject-select">Subject</label>
+                <select id="subject-select">
+                  <option value="Mathematics">Mathematics</option>
+                  <option value="Science">Science</option>
+                  <option value="English">English</option>
+                  <option value="Filipino">Filipino</option>
+                  <option value="History">History</option>
+                  <option value="Computer Science">Computer Science</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="quality-select">Audio Quality</label>
+                <select id="quality-select">
+                  <option value="Poor">Poor</option>
+                  <option value="Fair">Fair</option>
+                  <option value="Good" selected>Good</option>
+                  <option value="Excellent">Excellent</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="language-dist-select">Language Distribution</label>
+                <select id="language-dist-select">
+                  <option value="English">Primarily English</option>
+                  <option value="Tagalog">Primarily Tagalog</option>
+                  <option value="Mixed (Equal)">Mixed (Equal)</option>
+                  <option value="Mixed (More English)">Mixed (More English)</option>
+                  <option value="Mixed (More Tagalog)">Mixed (More Tagalog)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="notes-input">Notes (Optional)</label>
+              <textarea id="notes-input" rows="3" placeholder="Any observations about this transcript..."></textarea>
+            </div>
+          </div>
+
+          <div class="editor-actions">
+            <button class="btn btn-success btn-large" id="save-annotation-btn">💾 Save Annotation</button>
+            <button class="btn btn-secondary" id="cancel-annotation-btn">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings Tab -->
+      <div id="settings-tab" class="tab-content">
+        <h2>Settings</h2>
+
+        <div class="settings-section">
+          <h3>ASR Model</h3>
+          <div class="form-group">
+            <label for="default-model-select">Default Model Size</label>
+            <select id="default-model-select">
+              <option value="tiny">Tiny</option>
+              <option value="base" selected>Base</option>
+              <option value="small">Small</option>
+              <option value="medium">Medium</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Backend Status</h3>
+          <div id="backend-info">
+            <p><strong>API URL:</strong> <span id="api-url">-</span></p>
+            <p><strong>Status:</strong> <span id="backend-status">-</span></p>
+          </div>
+          <button class="btn btn-secondary" id="check-backend-btn">Check Connection</button>
+        </div>
+
+        <div class="settings-section">
+          <h3>About</h3>
+          <p><strong>Pulox</strong> v0.1.0</p>
+          <p>Hybrid Post-ASR Correction & Summarization System</p>
+          <p>For English-Tagalog Classroom Lectures</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
