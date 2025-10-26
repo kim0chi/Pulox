@@ -272,13 +272,16 @@ async def transcribe_audio(request: TranscriptionRequest):
         segments = []
         for seg in result.get("segments", []):
             if hasattr(seg, '__dict__'):
+                # Handle object-based segments
                 segments.append({
                     "start": seg.start,
                     "end": seg.end,
                     "text": seg.text,
-                    "language": getattr(seg, 'language', None)
+                    "language": getattr(seg, 'language', None),
+                    "words": getattr(seg, 'words', [])
                 })
             else:
+                # Segments are already dicts (with word-level data)
                 segments.append(seg)
 
         # Save transcript

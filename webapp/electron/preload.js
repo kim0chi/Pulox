@@ -19,14 +19,21 @@ contextBridge.exposeInMainWorld('electron', {
   showMessage: (options) => ipcRenderer.invoke('show-message', options)
 });
 
+// Shared API state
+let apiBaseUrl = null;
+
 // Expose API client to renderer
 contextBridge.exposeInMainWorld('puloxApi', {
-  // Base URL will be fetched from main process
-  baseUrl: null,
-
   // Initialize API client
   init: async function() {
-    this.baseUrl = await ipcRenderer.invoke('get-api-url');
+    const url = await ipcRenderer.invoke('get-api-url');
+    apiBaseUrl = url;
+    return apiBaseUrl;
+  },
+
+  // Get current base URL
+  get baseUrl() {
+    return apiBaseUrl;
   },
 
   // Upload audio file
@@ -34,7 +41,7 @@ contextBridge.exposeInMainWorld('puloxApi', {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch(`${this.baseUrl}/upload`, {
+    const response = await fetch(`${apiBaseUrl}/upload`, {
       method: 'POST',
       body: formData
     });
@@ -44,7 +51,7 @@ contextBridge.exposeInMainWorld('puloxApi', {
 
   // Transcribe audio
   transcribe: async function(filename, language = null, modelSize = 'base') {
-    const response = await fetch(`${this.baseUrl}/transcribe`, {
+    const response = await fetch(`${apiBaseUrl}/transcribe`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -59,19 +66,19 @@ contextBridge.exposeInMainWorld('puloxApi', {
 
   // Get transcripts list
   getTranscripts: async function() {
-    const response = await fetch(`${this.baseUrl}/transcripts`);
+    const response = await fetch(`${apiBaseUrl}/transcripts`);
     return response.json();
   },
 
   // Get specific transcript
   getTranscript: async function(transcriptId) {
-    const response = await fetch(`${this.baseUrl}/transcripts/${transcriptId}`);
+    const response = await fetch(`${apiBaseUrl}/transcripts/${transcriptId}`);
     return response.json();
   },
 
   // Save correction
   saveCorrection: async function(transcriptId, originalText, correctedText, metadata) {
-    const response = await fetch(`${this.baseUrl}/corrections`, {
+    const response = await fetch(`${apiBaseUrl}/corrections`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -87,19 +94,19 @@ contextBridge.exposeInMainWorld('puloxApi', {
 
   // Get correction
   getCorrection: async function(transcriptId) {
-    const response = await fetch(`${this.baseUrl}/corrections/${transcriptId}`);
+    const response = await fetch(`${apiBaseUrl}/corrections/${transcriptId}`);
     return response.json();
   },
 
   // Get corrections list
   getCorrections: async function() {
-    const response = await fetch(`${this.baseUrl}/corrections`);
+    const response = await fetch(`${apiBaseUrl}/corrections`);
     return response.json();
   },
 
   // Auto-correct text
   autoCorrect: async function(text, language = null, level = 'standard', useML = false) {
-    const response = await fetch(`${this.baseUrl}/correct`, {
+    const response = await fetch(`${apiBaseUrl}/correct`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -120,18 +127,35 @@ contextBridge.exposeInMainWorld('puloxApi', {
 
   // Get audio URL
   getAudioUrl: function(filename) {
-    return `${this.baseUrl}/audio/${filename}`;
+    return `${apiBaseUrl}/audio/${filename}`;
   },
 
   // Health check
-  healthCheck: async function() {
-    if (!this.baseUrl) {
+  healthCheck: async function(timeout = 5000) {
+    if (!apiBaseUrl) {
       await this.init();
     }
-    const response = await fetch(`${this.baseUrl}/health`);
-    if (!response.ok) {
-      throw new Error(`Health check failed: ${response.status}`);
+
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/health`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Health check failed: ${response.status}`);
+      }
+      return response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error(`Health check timeout after ${timeout}ms`);
+      }
+      throw error;
     }
-    return response.json();
   }
 });

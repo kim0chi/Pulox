@@ -7,6 +7,17 @@
 let currentFile = null;
 let currentTranscriptId = null;
 let transcripts = [];
+let audioElement = null;
+let wordTimestamps = [];
+let isProgressBarDragging = false;
+let isSeeking = false;
+
+// Word correction state
+let selectedWordIndex = -1;
+let selectedWordElement = null;
+let editHistory = [];
+let historyIndex = -1;
+const MAX_HISTORY = 50;
 
 // Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', async () => {
@@ -25,6 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupTranscriptHandlers();
   setupAnnotationHandlers();
   setupSettingsHandlers();
+  setupWordCorrectionHandlers();
 
   // Load initial data
   loadTranscripts();
@@ -36,52 +48,86 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Backend Connection
 // ============================================================================
 
-async function checkBackendConnection(retries = 10, delay = 500) {
+async function checkBackendConnection(retries = 3, delay = 1500) {
+  console.log('[Health Check] Starting connection check...');
+
   const statusIndicator = document.getElementById('connection-status');
   const statusText = document.getElementById('status-text');
 
-  statusText.textContent = 'Connecting...';
+  if (statusText) {
+    statusText.textContent = 'Connecting...';
+  }
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      console.log(`Connection attempt ${attempt}/${retries}...`);
-      const health = await window.puloxApi.healthCheck();
+      console.log(`[Health Check] Attempt ${attempt}/${retries}...`);
+      if (statusText) {
+        statusText.textContent = `Connecting... (${attempt}/${retries})`;
+      }
 
-      if (health.status === 'healthy') {
-        console.log('Backend connected successfully!');
-        statusIndicator.classList.add('connected');
-        statusIndicator.classList.remove('disconnected');
-        statusText.textContent = 'Connected';
+      // Call health check with 3 second timeout
+      // The healthCheck function handles its own initialization internally
+      const health = await window.puloxApi.healthCheck(3000);
+      console.log('[Health Check] Response:', health);
+
+      if (health && health.status === 'healthy') {
+        console.log('[Health Check] Backend is healthy!');
+        if (statusIndicator) {
+          statusIndicator.classList.add('connected');
+          statusIndicator.classList.remove('disconnected');
+        }
+        if (statusText) {
+          statusText.textContent = 'Connected';
+        }
 
         // Update settings page
         const apiUrl = await window.electron.getApiUrl();
-        document.getElementById('api-url').textContent = apiUrl;
-        document.getElementById('backend-status').textContent = 'Connected ✓';
+        const apiUrlElement = document.getElementById('api-url');
+        const backendStatusElement = document.getElementById('backend-status');
+        if (apiUrlElement) apiUrlElement.textContent = apiUrl;
+        if (backendStatusElement) backendStatusElement.textContent = 'Connected ✓';
         return true;
+      } else {
+        console.warn('[Health Check] Unexpected health response:', health);
+        throw new Error('Invalid health check response');
       }
     } catch (error) {
-      console.log(`Connection attempt ${attempt} failed:`, error.message);
+      const errorType = error.message.includes('timeout') ? 'timeout' :
+                       error.message.includes('fetch') ? 'network' :
+                       error.message.includes('Failed to fetch') ? 'network' : 'unknown';
+      console.error(`[Health Check] Attempt ${attempt}/${retries} failed (${errorType}):`, error.message);
 
       if (attempt < retries) {
-        // Wait before next attempt
-        await new Promise(resolve => setTimeout(resolve, delay));
+        // Wait before next attempt (longer delay for timeouts)
+        const retryDelay = errorType === 'timeout' ? delay * 2 : delay;
+        console.log(`[Health Check] Waiting ${retryDelay}ms before retry...`);
+        if (statusText) {
+          statusText.textContent = `Retrying... (${attempt}/${retries})`;
+        }
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
       }
     }
   }
 
   // All retries failed
-  console.error('Backend connection failed after all retries');
-  statusIndicator.classList.add('disconnected');
-  statusIndicator.classList.remove('connected');
-  statusText.textContent = 'Disconnected';
+  console.error('[Health Check] All attempts failed');
+  if (statusIndicator) {
+    statusIndicator.classList.add('disconnected');
+    statusIndicator.classList.remove('connected');
+  }
+  if (statusText) {
+    statusText.textContent = 'Disconnected';
+  }
 
   const apiUrl = await window.electron.getApiUrl();
-  document.getElementById('api-url').textContent = apiUrl;
-  document.getElementById('backend-status').textContent = 'Disconnected ✗';
+  const apiUrlElement = document.getElementById('api-url');
+  const backendStatusElement = document.getElementById('backend-status');
+  if (apiUrlElement) apiUrlElement.textContent = apiUrl;
+  if (backendStatusElement) backendStatusElement.textContent = 'Disconnected ✗';
 
   await window.electron.showError(
     'Connection Error',
-    `Could not connect to Python backend at ${apiUrl}\n\nThe backend may still be starting. Please wait a moment and click "Check Connection" in Settings.`
+    `Could not connect to Python backend at ${apiUrl}\n\nThe backend may still be starting. Please wait a moment and try again.`
   );
 
   return false;
@@ -369,8 +415,23 @@ async function viewTranscript(transcriptId) {
 function setupAnnotationHandlers() {
   document.getElementById('save-annotation-btn').addEventListener('click', saveAnnotation);
   document.getElementById('cancel-annotation-btn').addEventListener('click', closeAnnotationEditor);
-  document.getElementById('play-audio-btn').addEventListener('click', playCurrentAudio);
   document.getElementById('auto-correct-btn').addEventListener('click', autoCorrectText);
+
+  // Audio player controls
+  document.getElementById('play-pause-btn').addEventListener('click', togglePlayPause);
+
+  // Progress bar interactions
+  const progressBar = document.querySelector('.audio-progress-bar');
+  if (progressBar) {
+    progressBar.addEventListener('click', handleProgressBarClick);
+  }
+
+  const progressHandle = document.getElementById('audio-progress-handle');
+  if (progressHandle) {
+    progressHandle.addEventListener('mousedown', startProgressDrag);
+  }
+  document.addEventListener('mousemove', handleProgressDrag);
+  document.addEventListener('mouseup', stopProgressDrag);
 }
 
 async function openAnnotationEditor(transcriptId) {
@@ -384,18 +445,51 @@ async function openAnnotationEditor(transcriptId) {
 
     // Set data
     document.getElementById('current-transcript-id').textContent = transcriptId;
-    document.getElementById('original-text').value = transcript.text;
 
-    // Check if correction exists
+    // Reconstruct full text from segments if transcript.text is undefined
+    let fullText = transcript.text;
+    if (!fullText && transcript.segments && transcript.segments.length > 0) {
+      fullText = transcript.segments.map(seg => seg.text).join(' ');
+    }
+
+    // Keep hidden textareas for compatibility
+    document.getElementById('original-text').value = fullText || '';
+
+    // Check if correction exists (add safety guard for undefined text)
+    let correctedText = fullText || '';
     try {
       const correction = await window.puloxApi.getCorrection(transcriptId);
+      correctedText = correction.corrected;
       document.getElementById('corrected-text').value = correction.corrected;
     } catch {
-      // No existing correction, start with original
-      document.getElementById('corrected-text').value = transcript.text;
+      // No existing correction, start with original (use fullText, not transcript.text!)
+      document.getElementById('corrected-text').value = fullText || '';
     }
 
     currentTranscriptId = transcriptId;
+
+    // Initialize audio player with word-level sync (this populates wordTimestamps)
+    initializeAudioPlayer(transcript);
+
+    // If fullText is still empty, reconstruct from wordTimestamps
+    if (!fullText && wordTimestamps.length > 0) {
+      fullText = wordTimestamps.map(w => w.word).join(' ');
+      document.getElementById('original-text').value = fullText;
+    }
+
+    // If correctedText is still empty, use the reconstructed fullText
+    if (!correctedText && fullText) {
+      correctedText = fullText;
+      document.getElementById('corrected-text').value = fullText;
+    }
+
+    // Debug logging
+    console.log('[Annotation Editor] Full text length:', (fullText || '').length);
+    console.log('[Annotation Editor] Corrected text length:', (correctedText || '').length);
+    console.log('[Annotation Editor] Word timestamps count:', wordTimestamps.length);
+
+    // Render word-level editors after audio player is ready
+    renderWordLevelEditors(transcript, correctedText);
 
   } catch (error) {
     console.error('Failed to open annotation editor:', error);
@@ -407,6 +501,15 @@ function closeAnnotationEditor() {
   document.getElementById('annotation-selector').style.display = 'block';
   document.getElementById('annotation-editor').style.display = 'none';
   currentTranscriptId = null;
+
+  // Clean up audio player
+  if (audioElement) {
+    audioElement.pause();
+    audioElement.src = '';
+    audioElement = null;
+  }
+  wordTimestamps = [];
+  document.getElementById('audio-player-section').style.display = 'none';
 }
 
 async function saveAnnotation() {
@@ -468,24 +571,666 @@ async function saveAnnotation() {
   }
 }
 
-async function playCurrentAudio() {
-  if (!currentTranscriptId) return;
+// ============================================================================
+// Word-Level Transcript Editors
+// ============================================================================
 
+function renderWordLevelEditors(transcript, correctedText) {
+  // Render original transcript with word-level data
+  renderOriginalTranscriptEditor();
+
+  // Render corrected transcript
+  renderCorrectedTranscriptEditor(correctedText);
+
+  // Set up diff highlighting
+  updateDiffHighlighting();
+}
+
+function renderOriginalTranscriptEditor() {
+  const container = document.getElementById('original-text-editor');
+  if (!container || wordTimestamps.length === 0) return;
+
+  container.innerHTML = '';
+
+  wordTimestamps.forEach((wordData, index) => {
+    const wordSpan = document.createElement('span');
+    wordSpan.className = 'editor-word';
+    wordSpan.textContent = wordData.word;
+    wordSpan.dataset.index = index;
+    wordSpan.dataset.start = wordData.start;
+    wordSpan.dataset.end = wordData.end;
+    wordSpan.dataset.confidence = wordData.confidence;
+
+    // Add confidence-based styling
+    if (wordData.confidence >= 0.8) {
+      wordSpan.classList.add('confidence-high');
+    } else if (wordData.confidence >= 0.5) {
+      wordSpan.classList.add('confidence-medium');
+    } else {
+      wordSpan.classList.add('confidence-low');
+    }
+
+    // Add tooltip with word info
+    const tooltip = document.createElement('span');
+    tooltip.className = 'editor-word-tooltip';
+    tooltip.textContent = `${formatTime(wordData.start)} | Confidence: ${(wordData.confidence * 100).toFixed(0)}%`;
+    wordSpan.appendChild(tooltip);
+
+    // Click to sync audio
+    wordSpan.addEventListener('click', () => {
+      if (audioElement) {
+        isSeeking = true;
+        audioElement.currentTime = wordData.start;
+        if (audioElement.paused) {
+          audioElement.play();
+        }
+      }
+    });
+
+    container.appendChild(wordSpan);
+    container.appendChild(document.createTextNode(' '));
+  });
+}
+
+function renderCorrectedTranscriptEditor(correctedText) {
+  const container = document.getElementById('corrected-text-editor');
+  if (!container) return;
+
+  // Save initial state for undo/redo
+  editHistory = [];
+  historyIndex = -1;
+
+  container.innerHTML = '';
+
+  // Split corrected text into words and filter out empty strings
+  const words = (correctedText || '').trim().split(/\s+/).filter(word => word.length > 0);
+
+  // If no words, don't render anything
+  if (words.length === 0) {
+    container.textContent = 'No text to display. Please check the transcript.';
+    return;
+  }
+
+  words.forEach((word, index) => {
+    const wordSpan = document.createElement('span');
+    wordSpan.className = 'editor-word';
+    wordSpan.textContent = word;
+    wordSpan.dataset.index = index;
+
+    // Try to match with original word for timing info
+    if (index < wordTimestamps.length) {
+      const originalData = wordTimestamps[index];
+      wordSpan.dataset.start = originalData.start;
+      wordSpan.dataset.end = originalData.end;
+    }
+
+    // Attach word correction handlers
+    attachWordHandlers(wordSpan, index);
+
+    container.appendChild(wordSpan);
+    container.appendChild(document.createTextNode(' '));
+  });
+
+  // Update hidden textarea
+  updateCorrectedTextarea();
+
+  // Save initial state
+  saveState();
+
+  // Click outside to deselect
+  container.addEventListener('click', (e) => {
+    if (e.target === container) {
+      deselectWord();
+    }
+  });
+}
+
+function updateCorrectedTextarea() {
+  const container = document.getElementById('corrected-text-editor');
+  const textarea = document.getElementById('corrected-text');
+
+  if (container && textarea) {
+    // Extract text from word spans
+    const words = Array.from(container.querySelectorAll('.editor-word'))
+      .map(span => span.textContent.trim())
+      .filter(word => word.length > 0);
+
+    textarea.value = words.join(' ');
+  }
+}
+
+function updateDiffHighlighting() {
+  const originalContainer = document.getElementById('original-text-editor');
+  const correctedContainer = document.getElementById('corrected-text-editor');
+
+  if (!originalContainer || !correctedContainer) return;
+
+  const originalWords = Array.from(originalContainer.querySelectorAll('.editor-word'))
+    .map(span => span.textContent.trim().toLowerCase());
+  const correctedWords = Array.from(correctedContainer.querySelectorAll('.editor-word'))
+    .map(span => span.textContent.trim().toLowerCase());
+
+  // Clear all previous diff classes first
+  originalContainer.querySelectorAll('.editor-word').forEach(span => {
+    span.classList.remove('word-deleted', 'word-modified');
+  });
+  correctedContainer.querySelectorAll('.editor-word').forEach(span => {
+    span.classList.remove('word-added', 'word-modified');
+  });
+
+  // Check if texts are actually different - if not, skip highlighting
+  const originalText = originalWords.join(' ');
+  const correctedText = correctedWords.join(' ');
+
+  if (originalText === correctedText) {
+    // Texts are identical, no highlighting needed
+    return;
+  }
+
+  // Use a more sophisticated diff algorithm - sequence matching
+  // This handles insertions and deletions better than simple index comparison
+  const diffResult = computeDiff(originalWords, correctedWords);
+
+  // Apply highlighting based on diff results
+  const originalSpans = originalContainer.querySelectorAll('.editor-word');
+  const correctedSpans = correctedContainer.querySelectorAll('.editor-word');
+
+  diffResult.forEach(change => {
+    if (change.type === 'delete') {
+      // Word was in original but removed in corrected
+      if (originalSpans[change.oldIndex]) {
+        originalSpans[change.oldIndex].classList.add('word-deleted');
+      }
+    } else if (change.type === 'insert') {
+      // Word was added in corrected
+      if (correctedSpans[change.newIndex]) {
+        correctedSpans[change.newIndex].classList.add('word-added');
+      }
+    } else if (change.type === 'replace') {
+      // Word was modified
+      if (originalSpans[change.oldIndex]) {
+        originalSpans[change.oldIndex].classList.add('word-modified');
+      }
+      if (correctedSpans[change.newIndex]) {
+        correctedSpans[change.newIndex].classList.add('word-modified');
+      }
+    }
+  });
+}
+
+// Compute diff between two word arrays using dynamic programming
+function computeDiff(oldWords, newWords) {
+  const changes = [];
+
+  // Build edit distance matrix
+  const m = oldWords.length;
+  const n = newWords.length;
+  const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+
+  // Initialize base cases
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  // Fill matrix
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (oldWords[i - 1] === newWords[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(
+          dp[i - 1][j],     // delete
+          dp[i][j - 1],     // insert
+          dp[i - 1][j - 1]  // replace
+        );
+      }
+    }
+  }
+
+  // Backtrack to find actual changes
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldWords[i - 1] === newWords[j - 1]) {
+      // No change
+      i--;
+      j--;
+    } else if (i > 0 && j > 0 && dp[i][j] === dp[i - 1][j - 1] + 1) {
+      // Replace
+      changes.push({ type: 'replace', oldIndex: i - 1, newIndex: j - 1 });
+      i--;
+      j--;
+    } else if (j > 0 && (i === 0 || dp[i][j] === dp[i][j - 1] + 1)) {
+      // Insert
+      changes.push({ type: 'insert', newIndex: j - 1 });
+      j--;
+    } else {
+      // Delete
+      changes.push({ type: 'delete', oldIndex: i - 1 });
+      i--;
+    }
+  }
+
+  return changes;
+}
+
+// ============================================================================
+// Audio Player with Word-Level Synchronization
+// ============================================================================
+
+// Timing configuration for accurate word synchronization
+const LOOKAHEAD_MS = 80;           // Highlight words slightly early (accounts for perception delay)
+const TIMING_TOLERANCE_MS = 100;   // Tolerance window for timing inaccuracies (±100ms)
+const SHOW_UPCOMING_WORDS = 1;     // Number of upcoming words to show as preview
+const MIN_CONFIDENCE = 0.3;        // Minimum confidence threshold for timing adjustments
+
+// Cache for performance optimization
+let lastActiveWordIndex = -1;
+
+function initializeAudioPlayer(transcript) {
   try {
-    const transcript = await window.puloxApi.getTranscript(currentTranscriptId);
+    // Get audio element
+    audioElement = document.getElementById('sync-audio');
+    if (!audioElement) {
+      console.error('Audio element not found');
+      return;
+    }
+
+    // Set audio source
     const audioUrl = window.puloxApi.getAudioUrl(transcript.audio_file);
+    audioElement.src = audioUrl;
 
-    // Create audio element
-    const audio = new Audio(audioUrl);
-    audio.play();
+    // Extract word-level timestamps from segments
+    wordTimestamps = [];
+    lastActiveWordIndex = -1; // Reset cache
+    let wordIndex = 0;
 
-    // Show notification
-    console.log('Playing audio:', audioUrl);
+    if (transcript.segments && transcript.segments.length > 0) {
+      transcript.segments.forEach((segment, segmentIndex) => {
+        if (segment.words && segment.words.length > 0) {
+          // Use word-level timestamps with confidence scores
+          segment.words.forEach((wordData) => {
+            wordTimestamps.push({
+              word: wordData.word,
+              start: wordData.start,
+              end: wordData.end,
+              confidence: wordData.probability || 1.0, // Store confidence score
+              index: wordIndex++,
+              segmentIndex: segmentIndex
+            });
+          });
+        } else {
+          // Fallback: no word-level data, use segment text
+          const words = segment.text.trim().split(/\s+/);
+          const segmentDuration = segment.end - segment.start;
+          const timePerWord = segmentDuration / words.length;
+
+          words.forEach((word, i) => {
+            wordTimestamps.push({
+              word: word,
+              start: segment.start + (i * timePerWord),
+              end: segment.start + ((i + 1) * timePerWord),
+              confidence: 0.5, // Lower confidence for estimated timestamps
+              index: wordIndex++,
+              segmentIndex: segmentIndex
+            });
+          });
+        }
+      });
+    }
+
+    // Render word transcript
+    renderWordTranscript();
+
+    // Set up audio event listeners
+    audioElement.addEventListener('loadedmetadata', updateTotalTime);
+    audioElement.addEventListener('timeupdate', handleAudioTimeUpdate);
+    audioElement.addEventListener('ended', handleAudioEnded);
+    audioElement.addEventListener('play', updatePlayButton);
+    audioElement.addEventListener('pause', updatePlayButton);
+    audioElement.addEventListener('seeked', handleSeeked);
+    audioElement.addEventListener('seeking', handleSeeking);
+
+    // Show audio player section
+    document.getElementById('audio-player-section').style.display = 'block';
+
+    console.log(`Audio player initialized with ${wordTimestamps.length} words`);
 
   } catch (error) {
-    console.error('Failed to play audio:', error);
-    window.electron.showError('Playback Error', 'Failed to play audio file');
+    console.error('Failed to initialize audio player:', error);
+    window.electron.showError('Audio Error', 'Failed to initialize audio player');
   }
+}
+
+function renderWordTranscript() {
+  const container = document.getElementById('word-transcript');
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  wordTimestamps.forEach((wordData, index) => {
+    const wordSpan = document.createElement('span');
+    wordSpan.className = 'word';
+    wordSpan.textContent = wordData.word;
+    wordSpan.dataset.index = index;
+    wordSpan.dataset.start = wordData.start;
+    wordSpan.dataset.end = wordData.end;
+
+    // Add segment start marker for first word of each segment
+    if (index > 0 && wordData.segmentIndex !== wordTimestamps[index - 1].segmentIndex) {
+      wordSpan.classList.add('segment-start');
+    }
+
+    // Click to seek
+    wordSpan.addEventListener('click', () => {
+      if (audioElement) {
+        isSeeking = true;
+        audioElement.currentTime = wordData.start;
+        if (audioElement.paused) {
+          audioElement.play();
+        }
+      }
+    });
+
+    container.appendChild(wordSpan);
+    container.appendChild(document.createTextNode(' '));
+  });
+}
+
+function togglePlayPause() {
+  if (!audioElement) return;
+
+  if (audioElement.paused) {
+    audioElement.play();
+  } else {
+    audioElement.pause();
+  }
+}
+
+function updatePlayButton() {
+  const playIcon = document.getElementById('play-icon');
+  if (!playIcon || !audioElement) return;
+
+  playIcon.textContent = audioElement.paused ? '▶' : '⏸';
+}
+
+function handleAudioTimeUpdate() {
+  // Skip updates if dragging progress bar or manually seeking
+  if (!audioElement || isProgressBarDragging || isSeeking) return;
+
+  const currentTime = audioElement.currentTime;
+  const duration = audioElement.duration;
+
+  // Update progress bar
+  if (duration > 0) {
+    const progressPercent = (currentTime / duration) * 100;
+    const progressFill = document.getElementById('audio-progress-fill');
+    const progressHandle = document.getElementById('audio-progress-handle');
+
+    if (progressFill) {
+      progressFill.style.width = progressPercent + '%';
+    }
+    if (progressHandle) {
+      progressHandle.style.left = progressPercent + '%';
+    }
+  }
+
+  // Update current time display
+  updateCurrentTime(currentTime);
+
+  // Highlight current word
+  highlightCurrentWord(currentTime);
+}
+
+function highlightCurrentWord(currentTime) {
+  if (wordTimestamps.length === 0) return;
+
+  // Apply perceptual lookahead for better sync feel
+  const adjustedTime = currentTime + (LOOKAHEAD_MS / 1000);
+
+  // Find the active word using optimized search
+  let activeWordIndex = findActiveWord(adjustedTime);
+
+  // If no exact match, find closest word within tolerance
+  if (activeWordIndex === -1) {
+    activeWordIndex = findClosestWord(adjustedTime);
+  }
+
+  // Only update if the active word changed (performance optimization)
+  if (activeWordIndex === lastActiveWordIndex) return;
+  lastActiveWordIndex = activeWordIndex;
+
+  // Calculate upcoming word indices for preview
+  const upcomingIndices = [];
+  for (let i = 1; i <= SHOW_UPCOMING_WORDS; i++) {
+    if (activeWordIndex + i < wordTimestamps.length) {
+      upcomingIndices.push(activeWordIndex + i);
+    }
+  }
+
+  // Update word highlighting with context
+  const wordElements = document.querySelectorAll('.word-transcript .word');
+  wordElements.forEach((wordEl, index) => {
+    // Remove all classes
+    wordEl.classList.remove('active', 'upcoming');
+
+    if (index === activeWordIndex) {
+      // Highlight active word
+      wordEl.classList.add('active');
+      // Auto-scroll to keep active word visible
+      wordEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    } else if (upcomingIndices.includes(index)) {
+      // Preview upcoming words
+      wordEl.classList.add('upcoming');
+    }
+  });
+
+  // Also highlight words in the editor panels (bidirectional sync)
+  highlightEditorWords(activeWordIndex);
+}
+
+function highlightEditorWords(activeWordIndex) {
+  // Highlight in original editor
+  const originalWords = document.querySelectorAll('#original-text-editor .editor-word');
+  originalWords.forEach((wordEl, index) => {
+    if (index === activeWordIndex) {
+      wordEl.classList.add('editor-active');
+      // Auto-scroll to keep visible
+      wordEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    } else {
+      wordEl.classList.remove('editor-active');
+    }
+  });
+
+  // Highlight in corrected editor (if index matches)
+  const correctedWords = document.querySelectorAll('#corrected-text-editor .editor-word');
+  if (activeWordIndex < correctedWords.length) {
+    correctedWords.forEach((wordEl, index) => {
+      if (index === activeWordIndex) {
+        wordEl.classList.add('editor-active');
+        // Auto-scroll to keep visible
+        wordEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      } else {
+        wordEl.classList.remove('editor-active');
+      }
+    });
+  }
+}
+
+// Binary search to find word containing the given time
+function findActiveWord(time) {
+  let left = 0;
+  let right = wordTimestamps.length - 1;
+
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    const word = wordTimestamps[mid];
+
+    // Calculate tolerance based on confidence score
+    const tolerance = word.confidence >= MIN_CONFIDENCE
+      ? TIMING_TOLERANCE_MS / 1000
+      : (TIMING_TOLERANCE_MS * 1.5) / 1000; // Wider tolerance for low confidence
+
+    const startWithTolerance = word.start - tolerance;
+    const endWithTolerance = word.end + tolerance;
+
+    if (time >= startWithTolerance && time < endWithTolerance) {
+      return mid; // Found matching word
+    } else if (time < startWithTolerance) {
+      right = mid - 1;
+    } else {
+      left = mid + 1;
+    }
+  }
+
+  return -1; // No word found within tolerance
+}
+
+// Find closest word when no exact match (fallback for gaps)
+function findClosestWord(time) {
+  if (wordTimestamps.length === 0) return -1;
+
+  let closestIndex = 0;
+  let minDistance = Math.abs(time - wordTimestamps[0].start);
+
+  for (let i = 1; i < wordTimestamps.length; i++) {
+    const distance = Math.abs(time - wordTimestamps[i].start);
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestIndex = i;
+    }
+  }
+
+  // Only return if reasonably close (within 1 second)
+  return minDistance < 1.0 ? closestIndex : -1;
+}
+
+function updateCurrentTime(seconds) {
+  const timeDisplay = document.getElementById('current-time');
+  if (timeDisplay) {
+    timeDisplay.textContent = formatTime(seconds);
+  }
+}
+
+function updateTotalTime() {
+  if (!audioElement) return;
+
+  const timeDisplay = document.getElementById('total-time');
+  if (timeDisplay) {
+    timeDisplay.textContent = formatTime(audioElement.duration);
+  }
+}
+
+function handleAudioEnded() {
+  updatePlayButton();
+  // Reset to beginning
+  if (audioElement) {
+    audioElement.currentTime = 0;
+  }
+}
+
+function handleSeeking() {
+  // Called when seek operation starts
+  isSeeking = true;
+}
+
+function handleSeeked() {
+  // Called when seek operation completes
+  isSeeking = false;
+
+  // Force an immediate update of UI with the new position
+  if (audioElement) {
+    const currentTime = audioElement.currentTime;
+    const duration = audioElement.duration;
+
+    // Update progress bar
+    if (duration > 0) {
+      const progressPercent = (currentTime / duration) * 100;
+      const progressFill = document.getElementById('audio-progress-fill');
+      const progressHandle = document.getElementById('audio-progress-handle');
+
+      if (progressFill) {
+        progressFill.style.width = progressPercent + '%';
+      }
+      if (progressHandle) {
+        progressHandle.style.left = progressPercent + '%';
+      }
+    }
+
+    updateCurrentTime(currentTime);
+    highlightCurrentWord(currentTime);
+  }
+}
+
+function handleProgressBarClick(event) {
+  if (!audioElement) return;
+
+  const progressBar = event.currentTarget;
+  const rect = progressBar.getBoundingClientRect();
+  const clickX = event.clientX - rect.left;
+  const percentage = clickX / rect.width;
+  const newTime = percentage * audioElement.duration;
+
+  isSeeking = true;
+  audioElement.currentTime = newTime;
+}
+
+function startProgressDrag(event) {
+  event.preventDefault();
+  isProgressBarDragging = true;
+  isSeeking = true;
+}
+
+function handleProgressDrag(event) {
+  if (!isProgressBarDragging || !audioElement) return;
+
+  const progressBar = document.querySelector('.audio-progress-bar');
+  if (!progressBar) return;
+
+  const rect = progressBar.getBoundingClientRect();
+  const dragX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
+  const percentage = dragX / rect.width;
+  const newTime = percentage * audioElement.duration;
+
+  // Update visuals immediately
+  const progressPercent = percentage * 100;
+  const progressFill = document.getElementById('audio-progress-fill');
+  const progressHandle = document.getElementById('audio-progress-handle');
+
+  if (progressFill) {
+    progressFill.style.width = progressPercent + '%';
+  }
+  if (progressHandle) {
+    progressHandle.style.left = progressPercent + '%';
+  }
+
+  updateCurrentTime(newTime);
+}
+
+function stopProgressDrag() {
+  if (!isProgressBarDragging) return;
+
+  isProgressBarDragging = false;
+
+  // Set the actual audio time
+  if (audioElement) {
+    const progressBar = document.querySelector('.audio-progress-bar');
+    const progressHandle = document.getElementById('audio-progress-handle');
+
+    if (progressBar && progressHandle) {
+      const handleLeft = parseFloat(progressHandle.style.left) || 0;
+      const newTime = (handleLeft / 100) * audioElement.duration;
+      audioElement.currentTime = newTime;
+    }
+  }
+}
+
+function formatTime(seconds) {
+  if (isNaN(seconds) || seconds === Infinity) {
+    return '0:00';
+  }
+
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
 async function autoCorrectText() {
@@ -571,11 +1316,479 @@ async function autoCorrectText() {
 }
 
 // ============================================================================
+// Word Correction System
+// ============================================================================
+
+function setupWordCorrectionHandlers() {
+  // Modal handlers
+  document.getElementById('close-modal-btn').addEventListener('click', closeWordEditorModal);
+  document.getElementById('cancel-modal-btn').addEventListener('click', closeWordEditorModal);
+  document.getElementById('apply-correction-btn').addEventListener('click', applyWordCorrection);
+  document.getElementById('delete-word-btn').addEventListener('click', deleteSelectedWord);
+  document.getElementById('split-word-btn').addEventListener('click', splitSelectedWord);
+
+  // Modal overlay click to close
+  document.querySelector('.modal-overlay').addEventListener('click', closeWordEditorModal);
+
+  // Context menu handlers
+  document.getElementById('context-edit').addEventListener('click', () => {
+    hideContextMenu();
+    openWordEditorModal();
+  });
+  document.getElementById('context-delete').addEventListener('click', () => {
+    hideContextMenu();
+    deleteSelectedWord();
+  });
+  document.getElementById('context-split').addEventListener('click', () => {
+    hideContextMenu();
+    splitSelectedWord();
+  });
+  document.getElementById('context-merge').addEventListener('click', () => {
+    hideContextMenu();
+    mergeWithNextWord();
+  });
+  document.getElementById('context-mark-correct').addEventListener('click', () => {
+    hideContextMenu();
+    markWordAsReviewed();
+  });
+
+  // Global keyboard shortcuts
+  document.addEventListener('keydown', handleGlobalKeyboard);
+
+  // Hide context menu on click outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.context-menu')) {
+      hideContextMenu();
+    }
+  });
+}
+
+function handleGlobalKeyboard(event) {
+  // Only handle shortcuts when corrected editor is visible
+  const correctedEditor = document.getElementById('corrected-text-editor');
+  if (!correctedEditor || correctedEditor.offsetParent === null) return;
+
+  // Ctrl+Z - Undo
+  if (event.ctrlKey && event.key === 'z' && !event.shiftKey) {
+    event.preventDefault();
+    undo();
+  }
+
+  // Ctrl+Shift+Z or Ctrl+Y - Redo
+  if ((event.ctrlKey && event.shiftKey && event.key === 'Z') || (event.ctrlKey && event.key === 'y')) {
+    event.preventDefault();
+    redo();
+  }
+
+  // Delete/Backspace - Delete selected word (if a word is selected)
+  if ((event.key === 'Delete' || event.key === 'Backspace') && selectedWordElement && !event.target.matches('input, textarea')) {
+    event.preventDefault();
+    deleteSelectedWord();
+  }
+
+  // Escape - Deselect word / Close modal
+  if (event.key === 'Escape') {
+    const modal = document.getElementById('word-editor-modal');
+    if (modal.style.display !== 'none') {
+      closeWordEditorModal();
+    } else {
+      deselectWord();
+    }
+  }
+
+  // Enter - Open modal for selected word
+  if (event.key === 'Enter' && selectedWordElement && !event.target.matches('input, textarea')) {
+    event.preventDefault();
+    openWordEditorModal();
+  }
+}
+
+// Word Selection System
+function selectWord(wordElement, index) {
+  // Deselect previous word
+  if (selectedWordElement) {
+    selectedWordElement.classList.remove('word-selected');
+  }
+
+  // Select new word
+  selectedWordElement = wordElement;
+  selectedWordIndex = index;
+  wordElement.classList.add('word-selected');
+}
+
+function deselectWord() {
+  if (selectedWordElement) {
+    selectedWordElement.classList.remove('word-selected');
+    selectedWordElement = null;
+    selectedWordIndex = -1;
+  }
+}
+
+// Modal Functions
+function openWordEditorModal() {
+  if (!selectedWordElement) return;
+
+  const modal = document.getElementById('word-editor-modal');
+  const input = document.getElementById('modal-word-input');
+  const originalWord = document.getElementById('modal-original-word');
+  const wordTime = document.getElementById('modal-word-time');
+  const wordConfidence = document.getElementById('modal-word-confidence');
+
+  // Get word data
+  const wordText = selectedWordElement.textContent.trim();
+  const wordStart = selectedWordElement.dataset.start;
+  const wordEnd = selectedWordElement.dataset.end;
+  const index = parseInt(selectedWordElement.dataset.index);
+
+  // Fill modal with word info
+  originalWord.textContent = wordText;
+  input.value = wordText;
+
+  // Get timing and confidence from original word data
+  if (index < wordTimestamps.length) {
+    const wordData = wordTimestamps[index];
+    wordTime.textContent = `${formatTime(wordData.start)} - ${formatTime(wordData.end)}`;
+    wordConfidence.textContent = `${(wordData.confidence * 100).toFixed(0)}%`;
+  } else if (wordStart && wordEnd) {
+    wordTime.textContent = `${formatTime(parseFloat(wordStart))} - ${formatTime(parseFloat(wordEnd))}`;
+    wordConfidence.textContent = 'N/A';
+  } else {
+    wordTime.textContent = 'N/A';
+    wordConfidence.textContent = 'N/A';
+  }
+
+  // Show modal
+  modal.style.display = 'flex';
+
+  // Focus input and select text
+  setTimeout(() => {
+    input.focus();
+    input.select();
+  }, 100);
+
+  // Handle Enter key in input
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      applyWordCorrection();
+    } else if (e.key === 'Escape') {
+      closeWordEditorModal();
+    }
+  };
+}
+
+function closeWordEditorModal() {
+  const modal = document.getElementById('word-editor-modal');
+  modal.style.display = 'none';
+}
+
+function applyWordCorrection() {
+  if (!selectedWordElement) return;
+
+  const input = document.getElementById('modal-word-input');
+  const newText = input.value.trim();
+
+  if (!newText) {
+    window.electron.showError('Invalid Input', 'Word cannot be empty. Use Delete button to remove the word.');
+    return;
+  }
+
+  // Save state for undo
+  saveState();
+
+  // Update word
+  selectedWordElement.textContent = newText;
+
+  // Update diff and textarea
+  updateCorrectedTextarea();
+  updateDiffHighlighting();
+
+  // Close modal
+  closeWordEditorModal();
+}
+
+// Word Operations
+function deleteSelectedWord() {
+  if (!selectedWordElement) return;
+
+  // Save state for undo
+  saveState();
+
+  // Remove word and its following space
+  const nextNode = selectedWordElement.nextSibling;
+  if (nextNode && nextNode.nodeType === Node.TEXT_NODE) {
+    nextNode.remove();
+  }
+  selectedWordElement.remove();
+
+  // Clear selection
+  selectedWordElement = null;
+  selectedWordIndex = -1;
+
+  // Update
+  updateCorrectedTextarea();
+  updateDiffHighlighting();
+
+  // Close modal if open
+  closeWordEditorModal();
+}
+
+function splitSelectedWord() {
+  if (!selectedWordElement) return;
+
+  const wordText = selectedWordElement.textContent.trim();
+
+  // Split word feature temporarily disabled in Electron (prompt() not supported)
+  // As a workaround, split at the middle of the word
+  const splitPos = Math.floor(wordText.length / 2);
+
+  if (wordText.length < 2) {
+    window.electron.showError('Cannot Split', 'Word is too short to split.');
+    return;
+  }
+
+  // Save state for undo
+  saveState();
+
+  // Split the word
+  const firstPart = wordText.substring(0, splitPos);
+  const secondPart = wordText.substring(splitPos);
+
+  // Create new word spans
+  const container = selectedWordElement.parentElement;
+  const index = parseInt(selectedWordElement.dataset.index);
+
+  // First word
+  selectedWordElement.textContent = firstPart;
+
+  // Second word
+  const secondWord = document.createElement('span');
+  secondWord.className = 'editor-word';
+  secondWord.textContent = secondPart;
+  secondWord.dataset.index = index + 1;
+
+  // Insert after first word
+  const spaceNode = document.createTextNode(' ');
+  selectedWordElement.after(spaceNode);
+  spaceNode.after(secondWord);
+
+  // Update indices of following words
+  let currentIndex = index + 2;
+  let nextSibling = secondWord.nextSibling;
+  while (nextSibling) {
+    if (nextSibling.classList && nextSibling.classList.contains('editor-word')) {
+      nextSibling.dataset.index = currentIndex++;
+    }
+    nextSibling = nextSibling.nextSibling;
+  }
+
+  // Attach event handlers to new word
+  attachWordHandlers(secondWord, index + 1);
+
+  // Update
+  updateCorrectedTextarea();
+  updateDiffHighlighting();
+
+  // Close modal
+  closeWordEditorModal();
+}
+
+function mergeWithNextWord() {
+  if (!selectedWordElement) return;
+
+  // Find next word element
+  let nextWord = selectedWordElement.nextSibling;
+  while (nextWord && !nextWord.classList?.contains('editor-word')) {
+    nextWord = nextWord.nextSibling;
+  }
+
+  if (!nextWord) {
+    window.electron.showError('Cannot Merge', 'No next word to merge with.');
+    return;
+  }
+
+  // Save state for undo
+  saveState();
+
+  // Merge words
+  const mergedText = selectedWordElement.textContent.trim() + nextWord.textContent.trim();
+  selectedWordElement.textContent = mergedText;
+
+  // Remove space and next word
+  let nodeToRemove = selectedWordElement.nextSibling;
+  while (nodeToRemove && nodeToRemove !== nextWord) {
+    const next = nodeToRemove.nextSibling;
+    nodeToRemove.remove();
+    nodeToRemove = next;
+  }
+  nextWord.remove();
+
+  // Update indices
+  let currentIndex = parseInt(selectedWordElement.dataset.index) + 1;
+  let nextSibling = selectedWordElement.nextSibling;
+  while (nextSibling) {
+    if (nextSibling.classList && nextSibling.classList.contains('editor-word')) {
+      nextSibling.dataset.index = currentIndex++;
+    }
+    nextSibling = nextSibling.nextSibling;
+  }
+
+  // Update
+  updateCorrectedTextarea();
+  updateDiffHighlighting();
+}
+
+function markWordAsReviewed() {
+  if (!selectedWordElement) return;
+
+  selectedWordElement.classList.toggle('word-reviewed');
+  deselectWord();
+}
+
+// Context Menu
+function showContextMenu(event, wordElement, index) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  // Select the word
+  selectWord(wordElement, index);
+
+  // Position and show context menu
+  const menu = document.getElementById('word-context-menu');
+  menu.style.display = 'block';
+  menu.style.left = event.pageX + 'px';
+  menu.style.top = event.pageY + 'px';
+
+  // Ensure menu stays within viewport
+  setTimeout(() => {
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      menu.style.left = (event.pageX - rect.width) + 'px';
+    }
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top = (event.pageY - rect.height) + 'px';
+    }
+  }, 0);
+}
+
+function hideContextMenu() {
+  const menu = document.getElementById('word-context-menu');
+  menu.style.display = 'none';
+}
+
+// Edit History (Undo/Redo)
+function saveState() {
+  const container = document.getElementById('corrected-text-editor');
+  if (!container) return;
+
+  // Save current state
+  const state = {
+    html: container.innerHTML,
+    selectedIndex: selectedWordIndex
+  };
+
+  // Remove any states after current position (when editing after undo)
+  editHistory = editHistory.slice(0, historyIndex + 1);
+
+  // Add new state
+  editHistory.push(state);
+
+  // Limit history size
+  if (editHistory.length > MAX_HISTORY) {
+    editHistory.shift();
+  } else {
+    historyIndex++;
+  }
+}
+
+function undo() {
+  if (historyIndex <= 0) {
+    console.log('Nothing to undo');
+    return;
+  }
+
+  historyIndex--;
+  restoreState(editHistory[historyIndex]);
+}
+
+function redo() {
+  if (historyIndex >= editHistory.length - 1) {
+    console.log('Nothing to redo');
+    return;
+  }
+
+  historyIndex++;
+  restoreState(editHistory[historyIndex]);
+}
+
+function restoreState(state) {
+  const container = document.getElementById('corrected-text-editor');
+  if (!container) return;
+
+  // Restore HTML
+  container.innerHTML = state.html;
+
+  // Reattach event handlers to all words
+  const words = container.querySelectorAll('.editor-word');
+  words.forEach((word, index) => {
+    attachWordHandlers(word, index);
+  });
+
+  // Restore selection if applicable
+  if (state.selectedIndex >= 0 && state.selectedIndex < words.length) {
+    selectWord(words[state.selectedIndex], state.selectedIndex);
+  } else {
+    deselectWord();
+  }
+
+  // Update
+  updateCorrectedTextarea();
+  updateDiffHighlighting();
+}
+
+// Attach event handlers to word elements
+function attachWordHandlers(wordElement, index) {
+  // Single click - select word
+  wordElement.addEventListener('click', (e) => {
+    // Only select if not currently editing (contenteditable)
+    if (document.activeElement !== wordElement) {
+      e.stopPropagation();
+      // Select the word for editing
+      selectWord(wordElement, index);
+    }
+  });
+
+  // Double click - open modal
+  wordElement.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    selectWord(wordElement, index);
+    openWordEditorModal();
+  });
+
+  // Right click - context menu
+  wordElement.addEventListener('contextmenu', (e) => {
+    showContextMenu(e, wordElement, index);
+  });
+
+  // Input event - update on edit
+  wordElement.addEventListener('input', () => {
+    updateCorrectedTextarea();
+    updateDiffHighlighting();
+  });
+
+  // Focus - select word
+  wordElement.addEventListener('focus', () => {
+    selectWord(wordElement, index);
+  });
+}
+
+// ============================================================================
 // Settings
 // ============================================================================
 
 function setupSettingsHandlers() {
-  document.getElementById('check-backend-btn').addEventListener('click', checkBackendConnection);
+  document.getElementById('check-backend-btn').addEventListener('click', () => checkBackendConnection());
 
   // Load saved settings
   const savedModel = localStorage.getItem('defaultModel') || 'base';

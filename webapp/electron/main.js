@@ -23,8 +23,8 @@ function startPythonBackend() {
   return new Promise((resolve, reject) => {
     console.log('Starting Python backend...');
 
-    // Determine Python command (python or python3)
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    // Use the .venv311 Python environment (Python 3.11 with all dependencies)
+    const pythonCmd = path.join(__dirname, '..', '..', '.venv311', 'Scripts', 'python.exe');
 
     // Path to API script
     const apiScript = path.join(__dirname, '..', 'api.py');
@@ -60,7 +60,7 @@ function startPythonBackend() {
 
     // Wait for server to be ready
     let attempts = 0;
-    const maxAttempts = 30;
+    const maxAttempts = 90; // 90 seconds timeout (transformers library takes time to load)
 
     const checkServer = setInterval(async () => {
       attempts++;

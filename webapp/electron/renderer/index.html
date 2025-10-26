@@ -139,23 +139,67 @@
         <div id="annotation-editor" class="annotation-editor" style="display: none;">
           <div class="editor-header">
             <h3 id="annotation-title">Annotating: <span id="current-transcript-id"></span></h3>
-            <button class="btn btn-secondary" id="play-audio-btn">🔊 Play Audio</button>
+          </div>
+
+          <!-- Audio Player with Word Sync -->
+          <div class="audio-player-section" id="audio-player-section" style="display: none;">
+            <div class="audio-controls">
+              <button class="btn btn-secondary btn-icon" id="play-pause-btn" title="Play/Pause">
+                <span id="play-icon">▶</span>
+              </button>
+              <div class="audio-progress-container">
+                <div class="audio-progress-bar">
+                  <div class="audio-progress-fill" id="audio-progress-fill"></div>
+                  <div class="audio-progress-handle" id="audio-progress-handle"></div>
+                </div>
+                <div class="audio-time-info">
+                  <span id="current-time">0:00</span>
+                  <span id="total-time">0:00</span>
+                </div>
+              </div>
+              <button class="btn btn-secondary btn-icon" id="volume-btn" title="Volume">🔊</button>
+            </div>
+
+            <!-- Word-level Transcript Display -->
+            <div class="word-transcript-container">
+              <h4>Transcript (Click any word to jump to that position)</h4>
+              <div class="word-transcript" id="word-transcript">
+                Loading transcript...
+              </div>
+            </div>
+
+            <!-- Hidden audio element -->
+            <audio id="sync-audio" preload="auto"></audio>
           </div>
 
           <div class="editor-panels">
             <div class="editor-panel">
-              <h4>Original Transcript</h4>
-              <textarea id="original-text" class="editor-textarea" readonly></textarea>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h4 style="margin: 0;">Original Transcript</h4>
+                <span class="confidence-legend">
+                  <span class="legend-item"><span class="dot confidence-high"></span>High</span>
+                  <span class="legend-item"><span class="dot confidence-medium"></span>Medium</span>
+                  <span class="legend-item"><span class="dot confidence-low"></span>Low</span>
+                </span>
+              </div>
+              <div id="original-text-editor" class="editor-word-container" contenteditable="false"></div>
+              <!-- Keep hidden textarea for compatibility -->
+              <textarea id="original-text" style="display: none;"></textarea>
             </div>
 
             <div class="editor-panel">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                 <h4 style="margin: 0;">Corrected Transcript</h4>
                 <button class="btn btn-secondary btn-small" id="auto-correct-btn" title="Automatically suggest corrections">
                   🔧 Auto-Correct
                 </button>
               </div>
-              <textarea id="corrected-text" class="editor-textarea"></textarea>
+              <p style="margin: 0 0 10px 0; font-size: 0.85rem; color: #7f8c8d;">
+                💡 Double-click or right-click any word to edit
+              </p>
+              <div id="corrected-text-editor" class="editor-word-container" contenteditable="false"></div>
+              <!-- Keep hidden textarea for compatibility -->
+              <textarea id="corrected-text" style="display: none;"></textarea>
             </div>
           </div>
 
@@ -249,6 +293,70 @@
         </div>
       </div>
     </main>
+  </div>
+
+  <!-- Word Editor Modal -->
+  <div id="word-editor-modal" class="modal" style="display: none;">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Edit Word</h3>
+        <button class="modal-close" id="close-modal-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="word-editor-info">
+          <div class="info-row">
+            <span class="info-label">Original:</span>
+            <span class="info-value" id="modal-original-word"></span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Time:</span>
+            <span class="info-value" id="modal-word-time"></span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Confidence:</span>
+            <span class="info-value" id="modal-word-confidence"></span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="modal-word-input">Correction:</label>
+          <input type="text" id="modal-word-input" class="modal-input" placeholder="Enter corrected word">
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn btn-success" id="apply-correction-btn">Apply</button>
+          <button class="btn btn-secondary" id="delete-word-btn">Delete Word</button>
+          <button class="btn btn-secondary" id="split-word-btn">Split Word</button>
+          <button class="btn btn-secondary" id="cancel-modal-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Context Menu -->
+  <div id="word-context-menu" class="context-menu" style="display: none;">
+    <div class="context-menu-item" id="context-edit">
+      <span class="context-icon">✏️</span>
+      <span>Edit Word</span>
+    </div>
+    <div class="context-menu-item" id="context-delete">
+      <span class="context-icon">🗑️</span>
+      <span>Delete Word</span>
+    </div>
+    <div class="context-menu-item" id="context-split">
+      <span class="context-icon">✂️</span>
+      <span>Split Word</span>
+    </div>
+    <div class="context-menu-item" id="context-merge">
+      <span class="context-icon">🔗</span>
+      <span>Merge with Next</span>
+    </div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item" id="context-mark-correct">
+      <span class="context-icon">✓</span>
+      <span>Mark as Correct</span>
+    </div>
   </div>
 
   <script src="renderer.js"></script>

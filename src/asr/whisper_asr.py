@@ -58,7 +58,7 @@ class WhisperASR:
         fp16: bool = True,
         condition_on_previous_text: bool = True,
         initial_prompt: str = None,
-        word_timestamps: bool = False,
+        word_timestamps: bool = True,
         prepend_punctuations: str = "\"'([{-",
         append_punctuations: str = "\"'.,!?:)]}",
         **kwargs
@@ -110,12 +110,24 @@ class WhisperASR:
         # Process segments
         segments = []
         for seg in result.get("segments", []):
-            segment = TranscriptionSegment(
-                start=seg["start"],
-                end=seg["end"],
-                text=seg["text"].strip(),
-                language=self._detect_segment_language(seg["text"])
-            )
+            # Extract word-level timestamps if available
+            words = []
+            if "words" in seg and seg["words"]:
+                for word in seg["words"]:
+                    words.append({
+                        "word": word.get("word", "").strip(),
+                        "start": word.get("start", 0),
+                        "end": word.get("end", 0),
+                        "probability": word.get("probability", 1.0)
+                    })
+
+            segment = {
+                "start": seg["start"],
+                "end": seg["end"],
+                "text": seg["text"].strip(),
+                "language": self._detect_segment_language(seg["text"]),
+                "words": words
+            }
             segments.append(segment)
 
         return {
@@ -156,16 +168,8 @@ class WhisperASR:
                     base_name = os.path.splitext(os.path.basename(audio_path))[0]
                     output_path = os.path.join(output_dir, f"{base_name}_transcript.json")
 
-                    # Convert segments to serializable format
+                    # Segments are already in serializable format (dicts)
                     serializable_result = result.copy()
-                    serializable_result["segments"] = [
-                        {
-                            "start": seg.start,
-                            "end": seg.end,
-                            "text": seg.text,
-                            "language": seg.language
-                        } for seg in result["segments"]
-                    ]
 
                     with open(output_path, 'w', encoding='utf-8') as f:
                         json.dump(serializable_result, f, ensure_ascii=False, indent=2)

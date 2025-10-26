@@ -295,6 +295,11 @@ h4 {
   justify-content: center;
 }
 
+.btn-small {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+}
+
 /* Progress */
 .progress-section {
   background: white;
@@ -491,6 +496,145 @@ h4 {
   color: #5a6c7d;
 }
 
+/* Word-Level Editor Containers */
+.editor-word-container {
+  flex: 1;
+  min-height: 300px;
+  max-height: 400px;
+  padding: 1rem;
+  border: 1px solid #cbd5e0;
+  border-radius: 8px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 2;
+  overflow-y: auto;
+  background: white;
+  cursor: text;
+}
+
+.editor-word-container:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.editor-word-container[contenteditable="false"] {
+  background: #f8f9fa;
+  cursor: default;
+}
+
+/* Editor Word Spans */
+.editor-word {
+  display: inline;
+  padding: 0.2rem 0.3rem;
+  margin: 0 0.1rem;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  user-select: none; /* Prevent text selection, use click to select words instead */
+}
+
+.editor-word:hover {
+  background: #e1e8ed !important;
+  transform: translateY(-1px);
+}
+
+.editor-word.editor-active {
+  background: #667eea !important;
+  color: white;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+}
+
+/* Confidence-based color coding */
+.editor-word.confidence-high {
+  background: rgba(46, 204, 113, 0.1);
+}
+
+.editor-word.confidence-medium {
+  background: rgba(255, 193, 7, 0.15);
+}
+
+.editor-word.confidence-low {
+  background: rgba(231, 76, 60, 0.15);
+  border-bottom: 2px dotted #e74c3c;
+}
+
+/* Diff highlighting */
+.editor-word.word-added {
+  background: rgba(46, 204, 113, 0.25);
+  border-bottom: 2px solid #2ecc71;
+}
+
+.editor-word.word-deleted {
+  background: rgba(231, 76, 60, 0.25);
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.editor-word.word-modified {
+  background: rgba(255, 193, 7, 0.25);
+  border-bottom: 2px solid #ffc107;
+}
+
+/* Word tooltips */
+.editor-word-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2c3e50;
+  color: white;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  margin-bottom: 5px;
+}
+
+.editor-word:hover .editor-word-tooltip {
+  opacity: 1;
+}
+
+/* Confidence Legend */
+.confidence-legend {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85rem;
+  align-items: center;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: #5a6c7d;
+}
+
+.legend-item .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot.confidence-high {
+  background: rgba(46, 204, 113, 0.6);
+}
+
+.dot.confidence-medium {
+  background: rgba(255, 193, 7, 0.6);
+}
+
+.dot.confidence-low {
+  background: rgba(231, 76, 60, 0.6);
+}
+
 .annotation-metadata {
   background: #f8f9fa;
   padding: 1.5rem;
@@ -529,6 +673,398 @@ h4 {
   text-align: center;
   color: #7f8c8d;
   padding: 2rem;
+}
+
+/* Audio Player with Word Sync */
+.audio-player-section {
+  background: #f8f9fa;
+  padding: 1.5rem;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+  border: 2px solid #e1e8ed;
+}
+
+.audio-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.btn-icon {
+  padding: 0.5rem 1rem;
+  min-width: 50px;
+  justify-content: center;
+}
+
+#play-icon {
+  font-size: 1.2rem;
+  display: inline-block;
+  width: 20px;
+  text-align: center;
+}
+
+.audio-progress-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.audio-progress-bar {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  background: #cbd5e0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: height 0.2s;
+}
+
+.audio-progress-bar:hover {
+  height: 10px;
+}
+
+.audio-progress-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  border-radius: 4px;
+  width: 0%;
+  transition: width 0.1s linear;
+}
+
+.audio-progress-handle {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 16px;
+  background: white;
+  border: 2px solid #667eea;
+  border-radius: 50%;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.audio-progress-bar:hover .audio-progress-handle {
+  opacity: 1;
+}
+
+.audio-progress-handle:active {
+  cursor: grabbing;
+  transform: translate(-50%, -50%) scale(1.2);
+}
+
+.audio-time-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: #5a6c7d;
+}
+
+/* Word Transcript Display */
+.word-transcript-container {
+  margin-top: 1rem;
+}
+
+.word-transcript-container h4 {
+  margin-bottom: 1rem;
+  color: #5a6c7d;
+  font-size: 0.95rem;
+}
+
+.word-transcript {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 1px solid #cbd5e0;
+  max-height: 150px;
+  overflow-y: auto;
+  line-height: 2;
+  font-size: 1rem;
+}
+
+.word-transcript .word {
+  display: inline;
+  padding: 0.2rem 0.4rem;
+  margin: 0.1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.word-transcript .word:hover {
+  background: #e1e8ed;
+  color: #667eea;
+}
+
+.word-transcript .word.active {
+  background: #667eea;
+  color: white;
+  font-weight: 600;
+  transform: scale(1.05);
+  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+}
+
+.word-transcript .word.upcoming {
+  background: #e1e8ed;
+  color: #667eea;
+  opacity: 0.7;
+  font-weight: 500;
+}
+
+.word-transcript .word.segment-start {
+  margin-left: 1rem;
+}
+
+/* Word Selection State */
+.editor-word.word-selected {
+  background: #667eea !important;
+  color: white;
+  font-weight: 600;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+  outline: 2px solid #667eea;
+}
+
+/* Word Status Badges */
+.editor-word.word-reviewed::after {
+  content: '✓';
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #2ecc71;
+  color: white;
+  font-size: 0.7rem;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.editor-word.word-uncertain::after {
+  content: '?';
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #f39c12;
+  color: white;
+  font-size: 0.7rem;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+/* Word Editor Modal */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+.modal-content {
+  position: relative;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  width: 90%;
+  max-width: 500px;
+  z-index: 10001;
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    transform: translateY(-50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid #e1e8ed;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.3rem;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  color: #95a5a6;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.modal-close:hover {
+  background: #f8f9fa;
+  color: #e74c3c;
+}
+
+.modal-body {
+  padding: 1.5rem;
+}
+
+.word-editor-info {
+  background: #f8f9fa;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.info-row:last-child {
+  margin-bottom: 0;
+}
+
+.info-label {
+  font-weight: 600;
+  color: #5a6c7d;
+}
+
+.info-value {
+  color: #2c3e50;
+  font-family: 'Courier New', monospace;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 2px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  transition: border-color 0.3s;
+}
+
+.modal-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.modal-actions .btn {
+  flex: 1;
+  min-width: 100px;
+  justify-content: center;
+}
+
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  padding: 0.5rem 0;
+  min-width: 180px;
+  z-index: 10000;
+  animation: contextMenuFadeIn 0.15s ease-out;
+}
+
+@keyframes contextMenuFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: #2c3e50;
+  font-size: 0.95rem;
+}
+
+.context-menu-item:hover {
+  background: #f8f9fa;
+}
+
+.context-icon {
+  font-size: 1.1rem;
+  width: 20px;
+  text-align: center;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: #e1e8ed;
+  margin: 0.5rem 0;
 }
 
 /* Scrollbar */
