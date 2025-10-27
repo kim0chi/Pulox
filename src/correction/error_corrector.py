@@ -104,6 +104,7 @@ class ErrorCorrector:
 
         # Step 1: Detect language
         language = self._detect_language(text) if not config.language_hint else config.language_hint
+        logger.info(f"[ErrorCorrector] Detected language: '{language}' (hint: {config.language_hint})")
 
         # Step 2: Apply rule-based corrections
         if config.use_rules:
@@ -147,6 +148,8 @@ class ErrorCorrector:
 
         # Determine method used
         method = "rules" if not self.use_ml else ("ml" if not config.use_rules else "hybrid")
+
+        logger.info(f"[ErrorCorrector] Correction complete: {len(changes)} changes, confidence: {confidence:.3f}, method: {method}")
 
         return CorrectionResult(
             original_text=text,
@@ -255,9 +258,11 @@ class ErrorCorrector:
         tl_count = sum(1 for w in words if w in tagalog_markers)
         en_count = sum(1 for w in words if w in english_markers)
 
-        if tl_count > en_count * 2:
+        # Lower threshold (1.5x instead of 2x) to be more sensitive to code-switching
+        # Filipino classrooms often have 30-60% English technical terms
+        if tl_count > en_count * 1.5:
             return 'tl'
-        elif en_count > tl_count * 2:
+        elif en_count > tl_count * 1.5:
             return 'en'
         else:
             return 'mixed'

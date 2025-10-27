@@ -582,8 +582,8 @@ function renderWordLevelEditors(transcript, correctedText) {
   // Render corrected transcript
   renderCorrectedTranscriptEditor(correctedText);
 
-  // Set up diff highlighting
-  updateDiffHighlighting();
+  // Note: Diff highlighting removed - only show highlights after auto-correct
+  // User preference: clean interface, only highlight changes made by auto-correct
 }
 
 function renderOriginalTranscriptEditor() {
@@ -618,12 +618,26 @@ function renderOriginalTranscriptEditor() {
 
     // Click to sync audio
     wordSpan.addEventListener('click', () => {
-      if (audioElement) {
-        isSeeking = true;
-        audioElement.currentTime = wordData.start;
-        if (audioElement.paused) {
-          audioElement.play();
-        }
+      // Check if audio is ready before seeking
+      if (!audioElement) {
+        console.warn('[Word Click] No audio element');
+        showTemporaryMessage('⏸ Audio player not initialized');
+        return;
+      }
+
+      if (audioElement.readyState < 1) {
+        console.warn('[Word Click] Audio not ready yet, waiting for metadata...');
+        showTemporaryMessage('⏳ Audio loading... please wait');
+        return;
+      }
+
+      const startTime = parseFloat(wordSpan.dataset.start);
+      console.log(`[Word Click Original] Word: "${wordSpan.textContent}", dataset.start: "${wordSpan.dataset.start}", parsed: ${startTime}`);
+      if (!isNaN(startTime) && startTime >= 0) {
+        console.log(`[Word Click] Seeking to ${startTime.toFixed(2)}s for word: "${wordSpan.textContent}"`);
+        seekToTime(startTime, wordSpan.textContent);
+      } else {
+        console.warn(`[Word Click] Invalid timestamp for word: "${wordSpan.textContent}"`, wordSpan.dataset.start);
       }
     });
 
@@ -697,6 +711,46 @@ function updateCorrectedTextarea() {
 
     textarea.value = words.join(' ');
   }
+}
+
+function highlightAutoCorrectChanges(beforeText, afterText) {
+  /**
+   * Highlight only the changes made by auto-correct
+   * Compares the corrected text BEFORE vs AFTER auto-correct was applied
+   */
+  const correctedContainer = document.getElementById('corrected-text-editor');
+  if (!correctedContainer) return;
+
+  // Split into words
+  const beforeWords = beforeText.trim().split(/\s+/).filter(w => w.length > 0).map(w => w.toLowerCase());
+  const afterWords = afterText.trim().split(/\s+/).filter(w => w.length > 0).map(w => w.toLowerCase());
+
+  // If identical, no highlighting needed
+  if (beforeWords.join(' ') === afterWords.join(' ')) {
+    return;
+  }
+
+  // Clear previous auto-correct highlights
+  correctedContainer.querySelectorAll('.editor-word').forEach(span => {
+    span.classList.remove('auto-corrected');
+  });
+
+  // Compute diff
+  const diffResult = computeDiff(beforeWords, afterWords);
+  const correctedSpans = correctedContainer.querySelectorAll('.editor-word');
+
+  // Highlight words that were changed by auto-correct
+  diffResult.forEach(change => {
+    if (change.type === 'insert' || change.type === 'replace') {
+      if (correctedSpans[change.newIndex]) {
+        correctedSpans[change.newIndex].classList.add('auto-corrected');
+        correctedSpans[change.newIndex].style.backgroundColor = '#90EE90';  // Light green
+        correctedSpans[change.newIndex].style.fontWeight = 'bold';
+      }
+    }
+  });
+
+  console.log(`[Auto-Correct] Highlighted ${diffResult.length} word change(s)`);
 }
 
 function updateDiffHighlighting() {
@@ -834,6 +888,20 @@ function initializeAudioPlayer(transcript) {
       return;
     }
 
+    // Show loading indicator
+    const audioPlayerSection = document.getElementById('audio-player-section');
+    if (audioPlayerSection) {
+      audioPlayerSection.classList.add('audio-loading');
+      const existingIndicator = audioPlayerSection.querySelector('.audio-loading-indicator');
+      if (!existingIndicator) {
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.className = 'audio-loading-indicator';
+        loadingIndicator.innerHTML = '<span style="color: #3498db;">⏳ Loading audio... (word clicks will be enabled when ready)</span>';
+        loadingIndicator.style.cssText = 'padding: 10px; text-align: center; background: #ecf0f1; border-radius: 5px; margin-bottom: 10px;';
+        audioPlayerSection.insertBefore(loadingIndicator, audioPlayerSection.firstChild);
+      }
+    }
+
     // Set audio source
     const audioUrl = window.puloxApi.getAudioUrl(transcript.audio_file);
     audioElement.src = audioUrl;
@@ -881,7 +949,28 @@ function initializeAudioPlayer(transcript) {
     renderWordTranscript();
 
     // Set up audio event listeners
-    audioElement.addEventListener('loadedmetadata', updateTotalTime);
+    audioElement.addEventListener('loadedmetadata', () => {
+      console.log('[Audio] Metadata loaded, readyState:', audioElement.readyState);
+      updateTotalTime();
+
+      // Remove loading indicator - audio is ready
+      const audioPlayerSection = document.getElementById('audio-player-section');
+      if (audioPlayerSection) {
+        const loadingIndicator = audioPlayerSection.querySelector('.audio-loading-indicator');
+        if (loadingIndicator) {
+          loadingIndicator.remove();
+          console.log('[Audio] Loading indicator removed - audio ready');
+        }
+        audioPlayerSection.classList.remove('audio-loading');
+        audioPlayerSection.classList.add('audio-ready');
+      }
+    });
+    audioElement.addEventListener('canplay', () => {
+      console.log('[Audio] Can play, readyState:', audioElement.readyState);
+    });
+    audioElement.addEventListener('canplaythrough', () => {
+      console.log('[Audio] Can play through, readyState:', audioElement.readyState);
+    });
     audioElement.addEventListener('timeupdate', handleAudioTimeUpdate);
     audioElement.addEventListener('ended', handleAudioEnded);
     audioElement.addEventListener('play', updatePlayButton);
@@ -894,9 +983,85 @@ function initializeAudioPlayer(transcript) {
 
     console.log(`Audio player initialized with ${wordTimestamps.length} words`);
 
+    // Debug: Log first few word timestamps to verify data
+    if (wordTimestamps.length > 0) {
+      console.log('[Audio Player] Sample word timestamps:');
+      const sampleSize = Math.min(5, wordTimestamps.length);
+      for (let i = 0; i < sampleSize; i++) {
+        const w = wordTimestamps[i];
+        console.log(`  [${i}] "${w.word}" -> ${w.start.toFixed(2)}s - ${w.end.toFixed(2)}s (confidence: ${(w.confidence * 100).toFixed(0)}%)`);
+      }
+    }
+
   } catch (error) {
     console.error('Failed to initialize audio player:', error);
     window.electron.showError('Audio Error', 'Failed to initialize audio player');
+  }
+}
+
+// Helper function for safe audio seeking
+// Track pending seek to prevent race conditions
+let pendingSeekHandler = null;
+
+function seekToTime(time, wordText = '') {
+  if (!audioElement) {
+    console.warn('[Seek] No audio element available');
+    return false;
+  }
+
+  // Cancel any previous pending seek
+  if (pendingSeekHandler) {
+    audioElement.removeEventListener('loadedmetadata', pendingSeekHandler);
+    audioElement.removeEventListener('canplay', pendingSeekHandler);
+    pendingSeekHandler = null;
+    console.log('[Seek] Cancelled previous pending seek');
+  }
+
+  const readyStateNames = ['HAVE_NOTHING', 'HAVE_METADATA', 'HAVE_CURRENT_DATA', 'HAVE_FUTURE_DATA', 'HAVE_ENOUGH_DATA'];
+  const currentState = readyStateNames[audioElement.readyState] || 'UNKNOWN';
+
+  console.log(`[Seek] Attempting to seek to ${time.toFixed(2)}s for word "${wordText}"`);
+  console.log(`[Seek] Current audio time: ${audioElement.currentTime.toFixed(2)}s`);
+  console.log(`[Seek] Audio readyState: ${audioElement.readyState} (${currentState})`);
+  console.log(`[Seek] Audio duration: ${audioElement.duration}s`);
+  console.log(`[Seek] Audio paused: ${audioElement.paused}`);
+  console.log(`[Seek] Audio src: ${audioElement.src}`);
+
+  // Check if audio has loaded enough to seek (need at least HAVE_METADATA)
+  if (audioElement.readyState >= 1) {
+    // Audio has metadata - can seek immediately
+    console.log(`[Seek] Audio ready, setting currentTime from ${audioElement.currentTime.toFixed(2)}s to ${time.toFixed(2)}s`);
+    isSeeking = true;
+    audioElement.currentTime = time;
+    console.log(`[Seek] After setting, currentTime is now: ${audioElement.currentTime.toFixed(2)}s`);
+    if (audioElement.paused) {
+      console.log(`[Seek] Audio was paused, calling play()`);
+      audioElement.play().catch(err => console.error('[Seek] Play failed:', err));
+    }
+    return true;
+  } else {
+    // Audio not ready yet - wait for metadata to load
+    console.warn(`[Seek] Audio not ready (readyState: ${audioElement.readyState}), waiting for metadata...`);
+
+    // Create handler for when audio is ready
+    const onReady = () => {
+      console.log(`[Seek] Metadata loaded, now seeking to ${time.toFixed(2)}s`);
+      isSeeking = true;
+      audioElement.currentTime = time;
+      if (audioElement.paused) {
+        audioElement.play().catch(err => console.error('[Seek] Play failed:', err));
+      }
+      // Clear pending handler
+      pendingSeekHandler = null;
+      audioElement.removeEventListener('loadedmetadata', onReady);
+      audioElement.removeEventListener('canplay', onReady);
+    };
+
+    // Store handler reference to allow cancellation
+    pendingSeekHandler = onReady;
+    audioElement.addEventListener('loadedmetadata', onReady);
+    audioElement.addEventListener('canplay', onReady);
+    return false;
   }
 }
 
@@ -921,12 +1086,26 @@ function renderWordTranscript() {
 
     // Click to seek
     wordSpan.addEventListener('click', () => {
-      if (audioElement) {
-        isSeeking = true;
-        audioElement.currentTime = wordData.start;
-        if (audioElement.paused) {
-          audioElement.play();
-        }
+      // Check if audio is ready before seeking
+      if (!audioElement) {
+        console.warn('[Word Transcript Click] No audio element');
+        showTemporaryMessage('⏸ Audio player not initialized');
+        return;
+      }
+
+      if (audioElement.readyState < 1) {
+        console.warn('[Word Transcript Click] Audio not ready yet');
+        showTemporaryMessage('⏳ Audio loading... please wait');
+        return;
+      }
+
+      const startTime = parseFloat(wordSpan.dataset.start);
+      console.log(`[Word Transcript Click] Word: "${wordSpan.textContent}", dataset.start: "${wordSpan.dataset.start}", parsed: ${startTime}`);
+      if (!isNaN(startTime) && startTime >= 0) {
+        console.log(`[Word Transcript Click] Seeking to ${startTime.toFixed(2)}s for word: "${wordSpan.textContent}"`);
+        seekToTime(startTime, wordSpan.textContent);
+      } else {
+        console.warn(`[Word Transcript Click] Invalid timestamp for word: "${wordSpan.textContent}"`, wordSpan.dataset.start);
       }
     });
 
@@ -1243,15 +1422,27 @@ async function autoCorrectText() {
   }
 
   try {
+    // Save the BEFORE state for comparison
+    const textBeforeCorrection = originalText;
+
+    // Get correction settings from UI FIRST (needed for loading state)
+    const level = 'standard';  // Can add a dropdown for this
+    const useMlCheckbox = document.getElementById('use-ml-correction');
+    const useML = useMlCheckbox ? useMlCheckbox.checked : false;
+
+    console.log(`[Auto-Correct] Using ML mode: ${useML}`);
+
     // Show loading state
     const autoCorrectBtn = document.getElementById('auto-correct-btn');
     const originalBtnText = autoCorrectBtn.textContent;
     autoCorrectBtn.disabled = true;
-    autoCorrectBtn.textContent = 'Correcting...';
 
-    // Get correction settings (can be enhanced with UI controls later)
-    const level = 'standard';  // Can add a dropdown for this
-    const useML = false;  // ML requires model download, start with rules only
+    // Different message for ML mode (first time may take longer for model download)
+    if (useML) {
+      autoCorrectBtn.textContent = 'Loading ML Model...';
+    } else {
+      autoCorrectBtn.textContent = 'Correcting...';
+    }
 
     // Call auto-correct API
     const result = await window.puloxApi.autoCorrect(originalText, null, level, useML);
@@ -1283,7 +1474,15 @@ async function autoCorrectText() {
 
     // Apply if user confirms
     if (response === 1) {  // Apply Corrections button
+      // Update textarea
       correctedTextArea.value = result.corrected_text;
+
+      // Re-render the word-level editor to show the corrected text visually
+      renderCorrectedTranscriptEditor(result.corrected_text);
+
+      // Highlight only the changes made by auto-correct
+      // By showing inline what changed in the corrected text itself
+      highlightAutoCorrectChanges(textBeforeCorrection, result.corrected_text);
 
       // Show success message with changes
       let changesList = '';
@@ -1819,6 +2018,49 @@ function formatDuration(seconds) {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+function showTemporaryMessage(message, duration = 2000) {
+  /**
+   * Show a temporary message overlay to the user
+   * Useful for quick feedback without modal dialogs
+   */
+  const messageDiv = document.createElement('div');
+  messageDiv.className = 'temporary-message';
+  messageDiv.textContent = message;
+  messageDiv.style.cssText = `
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #3498db;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    z-index: 10000;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+    font-size: 14px;
+    font-weight: 500;
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+  `;
+
+  document.body.appendChild(messageDiv);
+
+  // Fade in
+  requestAnimationFrame(() => {
+    messageDiv.style.opacity = '1';
+  });
+
+  // Fade out and remove
+  setTimeout(() => {
+    messageDiv.style.opacity = '0';
+    setTimeout(() => messageDiv.remove(), 300);
+  }, duration);
 }
 
 // Export for debugging

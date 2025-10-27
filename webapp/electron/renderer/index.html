@@ -11,7 +11,7 @@
   <!-- Header -->
   <header class="app-header">
     <div class="header-content">
-      <h1 class="app-title">🎓 Pulox</h1>
+      <h1 class="app-title">Pulox</h1>
       <p class="app-subtitle">English-Tagalog Lecture Transcription</p>
     </div>
     <div class="header-status">
@@ -190,12 +190,18 @@
             <div class="editor-panel">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                 <h4 style="margin: 0;">Corrected Transcript</h4>
-                <button class="btn btn-secondary btn-small" id="auto-correct-btn" title="Automatically suggest corrections">
-                  🔧 Auto-Correct
-                </button>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 5px; cursor: pointer;" title="Use ML model for better grammar correction (slower, requires model download)">
+                    <input type="checkbox" id="use-ml-correction" style="cursor: pointer;" />
+                    <span>ML Mode</span>
+                  </label>
+                  <button class="btn btn-secondary btn-small" id="auto-correct-btn" title="Automatically suggest corrections">
+                    🔧 Auto-Correct
+                  </button>
+                </div>
               </div>
               <p style="margin: 0 0 10px 0; font-size: 0.85rem; color: #7f8c8d;">
-                💡 Double-click or right-click any word to edit
+                💡 Double-click or right-click any word to edit | <span id="ml-mode-hint" style="color: #95a5a6;">ML Mode: Better grammar, slower (1st use: downloads ~1.2GB model)</span>
               </p>
               <div id="corrected-text-editor" class="editor-word-container" contenteditable="false"></div>
               <!-- Keep hidden textarea for compatibility -->

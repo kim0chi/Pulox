@@ -3,8 +3,19 @@ Rule-Based Error Correction for Filipino-English Code-Switched Text
 Handles common ASR errors specific to Philippine classroom lectures
 """
 import re
+import logging
 from typing import Dict, List, Tuple
 from dataclasses import dataclass
+
+# Import Tagalog-specific corrections
+from .rules_tl import (
+    TAGALOG_WORD_SPLITS,
+    ALL_TAGALOG_CORRECTIONS
+)
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -23,6 +34,11 @@ class CorrectionRules:
         self.rules = self._load_rules()
         self.tagalog_dict = self._load_tagalog_dictionary()
         self.common_errors = self._load_common_errors()
+        self.tagalog_word_splits = TAGALOG_WORD_SPLITS
+
+        # Merge Tagalog corrections into common errors
+        self.common_errors.update(ALL_TAGALOG_CORRECTIONS)
+        logger.info(f"[Rules] Loaded {len(self.rules)} pattern rules + {len(self.tagalog_word_splits)} word splits + {len(ALL_TAGALOG_CORRECTIONS)} Tagalog corrections")
 
     def _load_rules(self) -> List[CorrectionRule]:
         """Load all correction rules"""
@@ -107,14 +123,14 @@ class CorrectionRules:
             pattern=r'\bpunction\b',
             replacement='function',
             description='P -> F confusion',
-            language='en'
+            language='both'  # Apply to all text (common in code-switching)
         ))
 
         rules.append(CorrectionRule(
             pattern=r'\bpormula\b',
             replacement='formula',
             description='P -> F confusion',
-            language='en'
+            language='both'  # Apply to all text (common in code-switching)
         ))
 
         # V/B confusion
@@ -122,14 +138,14 @@ class CorrectionRules:
             pattern=r'\bbery\b',
             replacement='very',
             description='B -> V confusion',
-            language='en'
+            language='both'  # Apply to all text (common in code-switching)
         ))
 
         rules.append(CorrectionRule(
             pattern=r'\balue\b',
             replacement='value',
             description='B -> V confusion',
-            language='en'
+            language='both'  # Apply to all text (common in code-switching)
         ))
 
         # TH -> D/T confusion
@@ -137,21 +153,21 @@ class CorrectionRules:
             pattern=r'\bdat\b(?!\w)',
             replacement='that',
             description='D -> TH correction',
-            language='en'
+            language='both'  # Apply to all text (common in code-switching)
         ))
 
         rules.append(CorrectionRule(
             pattern=r'\bdis\b(?!\w)',
             replacement='this',
             description='D -> TH correction',
-            language='en'
+            language='both'  # Apply to all text (common in code-switching)
         ))
 
         rules.append(CorrectionRule(
             pattern=r'\bwit\b(?!\w)',
             replacement='with',
             description='T -> TH correction',
-            language='en'
+            language='both'  # Apply to all text (common in code-switching)
         ))
 
         # ===== PUNCTUATION RULES =====
@@ -245,6 +261,31 @@ class CorrectionRules:
             'anu': 'ano',
         }
 
+    def _split_concatenated_words(self, text: str) -> Tuple[str, List[str]]:
+        """
+        Split words that ASR concatenated incorrectly (Tagalog-specific)
+
+        Common issue: "kumusta ka" → ASR hears "commustaka" or "gamustaka"
+
+        Args:
+            text: Input text with potential concatenations
+
+        Returns:
+            (corrected_text, list_of_changes)
+        """
+        corrected = text
+        changes = []
+
+        for concatenated, split in self.tagalog_word_splits.items():
+            if concatenated in corrected.lower():
+                pattern = re.compile(r'\b' + re.escape(concatenated) + r'\b', re.IGNORECASE)
+                if pattern.search(corrected):
+                    corrected = pattern.sub(split, corrected)
+                    changes.append(f"Split: '{concatenated}' -> '{split}'")
+                    logger.debug(f"[Rules] Applied word split: '{concatenated}' -> '{split}'")
+
+        return corrected, changes
+
     def apply_rules(self, text: str, language: str = 'both') -> Tuple[str, List[str]]:
         """
         Apply correction rules to text
@@ -256,20 +297,40 @@ class CorrectionRules:
         Returns:
             (corrected_text, list_of_changes)
         """
+        logger.info(f"[Correction] Applying rules with language filter: '{language}'")
+        logger.info(f"[Correction] Input text length: {len(text)} chars")
+
         corrected = text
         changes = []
 
-        # Apply common error corrections
+        # Step 1: ALWAYS apply word splitting (even for English text)
+        # Reason: Filipino greetings can appear in any text regardless of primary language
+        # The patterns are very specific (commustaka, gamustaka, etc.) so no false positives
+        corrected, split_changes = self._split_concatenated_words(corrected)
+        changes.extend(split_changes)
+        if split_changes:
+            logger.info(f"[Correction] Applied {len(split_changes)} word split(s)")
+
+        # Step 2: Apply common error corrections
         for error, correction in self.common_errors.items():
             if error in corrected.lower():
                 pattern = re.compile(r'\b' + re.escape(error) + r'\b', re.IGNORECASE)
                 if pattern.search(corrected):
                     corrected = pattern.sub(correction, corrected)
-                    changes.append(f"'{error}' → '{correction}'")
+                    changes.append(f"'{error}' -> '{correction}'")
 
         # Apply pattern-based rules
         for rule in self.rules:
-            if language == 'both' or rule.language == 'both' or rule.language == language:
+            # For mixed language text, apply ALL rules (both en and tl)
+            # This handles Filipino-English code-switching properly
+            should_apply = (
+                language == 'both' or
+                rule.language == 'both' or
+                rule.language == language or
+                language == 'mixed'  # Apply all rules for code-switched text
+            )
+
+            if should_apply:
                 pattern = re.compile(rule.pattern, re.IGNORECASE)
                 if pattern.search(corrected):
                     new_text = pattern.sub(rule.replacement, corrected)
@@ -282,6 +343,10 @@ class CorrectionRules:
 
         # Clean up extra spaces
         corrected = re.sub(r'\s+', ' ', corrected).strip()
+
+        logger.info(f"[Correction] Applied {len(changes)} correction(s)")
+        if changes:
+            logger.info(f"[Correction] Changes: {changes[:5]}")  # Show first 5 changes
 
         return corrected, changes
 
