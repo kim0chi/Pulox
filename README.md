@@ -1,695 +1,105 @@
-# Pulox# Pulox
+﻿# Pulox
 
+**Hybrid Post-ASR Correction & Summarization System for English-Tagalog Classroom Lectures**
 
+[![Status](https://img.shields.io/badge/status-alpha-yellow)](docs/project/status.md)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue)](docs/project/changelog.md)
+[![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)](docs/setup/installation.md)
 
-**Hybrid Post-ASR Correction & Summarization System for English-Tagalog Classroom Lectures****Hybrid Post-ASR Correction & Summarization System for English-Tagalog Classroom Lectures**
+## Overview
 
+Pulox is an intelligent desktop application that automatically transcribes, corrects, and summarizes classroom lectures delivered in mixed English and Tagalog (Filipino). Designed specifically for Philippine educational settings where code-switching is common.
 
+### Key Features
 
-[![Status](https://img.shields.io/badge/status-alpha-yellow)](docs/project/status.md)[![Status](https://img.shields.io/badge/status-alpha-yellow)](docs/project/status.md)
-
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](docs/project/changelog.md)[![Version](https://img.shields.io/badge/version-0.1.0-blue)](docs/project/changelog.md)
-
-[![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)](docs/setup/installation.md)[![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)](docs/setup/installation.md)
-
-
-
-## Overview## Overview
-
-
-
-Pulox is an intelligent desktop application that automatically transcribes, corrects, and summarizes classroom lectures delivered in mixed English and Tagalog (Filipino). Designed specifically for Philippine educational settings where code-switching is common.Pulox is an intelligent desktop application that automatically transcribes, corrects, and summarizes classroom lectures delivered in mixed English and Tagalog (Filipino). Designed specifically for Philippine educational settings where code-switching is common.
-
-
-
-### Key Features### Key Features
-
-
-
-- 🎙️ **Automatic Transcription** — OpenAI Whisper for accurate speech-to-text- 🎙️ **Automatic Transcription** - OpenAI Whisper for accurate speech-to-text
-
-- ✏️ **Error Correction** — Post-ASR grammar and spelling correction (in development)- ✏️ **Error Correction** - Post-ASR grammar and spelling correction (in development)
-
-- 📝 **Summarization** — Automatic lecture summary generation (in development)- 📝 **Summarization** - Automatic lecture summary generation (in development)
-
-- 🌏 **Bilingual Support** — Handles English, Tagalog, and code-switched content- 🌏 **Bilingual Support** - Handles English, Tagalog, and code-switched content
-
-- 💻 **Desktop App** — Modern Electron-based interface- 💻 **Desktop App** - Modern Electron-based interface
-
-- 🔧 **Annotation Tools** — Manual correction and quality improvement- 🔧 **Annotation Tools** - Manual correction and quality improvement
-
-
-
-------
-
-
-
-## Quick Start## Quick Start
-
-
-
-### Prerequisites### Prerequisites
-
-
-
-- Python 3.8+ — [Download](https://www.python.org/downloads/)- Python 3.8+ — [Download](https://www.python.org/downloads/)
-
-- Node.js 16+ — [Download](https://nodejs.org/)- Node.js 16+ — [Download](https://nodejs.org/)
-
-- FFmpeg — [Installation Guide](docs/setup/installation.md#issue-5-ffmpeg-not-found)- FFmpeg — [Installation Guide](docs/setup/installation.md#issue-5-ffmpeg-not-found)
-
-
-
-### Installation### Installation
-
-
-
-1. Clone or download the project1. Clone or download the project
-
-
-
-   ```bash   ```bash
-
-   cd Pulox   cd Pulox
-
-   ```   ```
-
-
-
-2. Run the installer2. Run the installer
-
-
-
-   ```bash   ```bash
-
-   scripts/install_electron_deps.bat   scripts/install_electron_deps.bat
-
-   ```   ```
-
-
-
-3. Start the application3. Start the application
-
-
-
-   ```bash   ```bash
-
-   scripts/run_electron_dev.bat   scripts/run_electron_dev.bat
-
-   ```   ```
-
-
-
-> 📖 For detailed instructions, see the [Installation Guide](docs/setup/installation.md).> 📖 For detailed instructions, see the [Installation Guide](docs/setup/installation.md).
-
-
-
-------
-
-
-
-## Usage## Usage
-
-
-
-### Transcribing Audio### Transcribing Audio
-
-
-
-1. Launch Pulox and click **Upload & Transcribe**1. Launch Pulox and click **Upload & Transcribe**
-
-2. Drag and drop an audio file (WAV, MP3, M4A, etc.)2. Drag and drop an audio file (WAV, MP3, M4A, etc.)
-
-3. Select language and model size3. Select language and model size
-
-4. Click **Start Transcription**4. Click **Start Transcription**
-
-
-
-### Viewing & Annotating### Viewing & Annotating
-
-
-
-- Browse transcripts in the **Transcripts** tab- Browse transcripts in the **Transcripts** tab
-
-- Click **View** to see the full transcript- Click **View** to see the full transcript
-
-- Click **Annotate** to make corrections and add metadata- Click **Annotate** to make corrections and add metadata
-
-
-
-### Exporting Data### Exporting Data
-
-
-
-- Transcripts: `data/transcripts/`- Transcripts: `data/transcripts/`
-
-- Corrections: `data/corrections/`- Corrections: `data/corrections/`
-
-- Access via file system or API- Access via file system or API
-
-
-
-------
-
-
-
-## Architecture## Architecture
-
-
-
-```text```
-
-┌─────────────────────────────────┐┌─────────────────────────────────┐
-
-│   Electron Desktop App          ││   Electron Desktop App          │
-
-│                                 ││                                 │
-
-│  • Upload Interface             ││  • Upload Interface             │
-
-│  • Transcript Viewer            ││  • Transcript Viewer            │
-
-│  • Annotation Editor            ││  • Annotation Editor            │
-
-│  • Settings Panel               ││  • Settings Panel               │
-
-└────────────┬────────────────────┘└────────────┬────────────────────┘
-
-             │ HTTP REST API             │ HTTP REST API
-
-             ▼             ▼
-
-┌─────────────────────────────────┐┌─────────────────────────────────┐
-
-│   FastAPI Backend (Python)      ││   FastAPI Backend (Python)      │
-
-│                                 ││                                 │
-
-│  • ASR Module (Whisper)         ││  • ASR Module (Whisper)         │
-
-│  • Correction Module (MT5)      ││  • Correction Module (MT5)      │
-
-│  • Summarization (MT5)          ││  • Summarization (MT5)          │
-
-│  • Evaluation Metrics           ││  • Evaluation Metrics           │
-
-└─────────────────────────────────┘└─────────────────────────────────┘
-
-``````
-
-
-
-> 📖 For detailed architecture, see [Architecture Documentation](docs/project/architecture.md).> 📖 For detailed roadmap, see [Roadmap](docs/project/roadmap.md).
-
-
-
-------
-
-
-
-## Project Structure## Documentation
-
-
-
-```plaintext---
-
-Pulox/
-
-├── src/                      # Python source code## Project Structure
-
-│   ├── asr/                  # Speech recognition
-
-│   ├── correction/           # Error correction```plaintext
-
-│   ├── summarization/        # SummarizationPulox/
-
-│   └── utils/                # Utilities├── src/                      # Python source code
-
-├── webapp/│   ├── asr/                  # Speech recognition
-
-│   ├── api.py                # FastAPI backend│   ├── correction/           # Error correction
-
-│   └── electron/             # Desktop application│   ├── summarization/        # Summarization
-
-├── data/                     # Data storage│   └── utils/                # Utilities
-
-│   ├── raw_audio/            # Original recordings├── webapp/
-
-│   ├── transcripts/          # ASR outputs│   ├── api.py                # FastAPI backend
-
-│   └── corrections/          # Manual corrections│   └── electron/             # Desktop application
-
-├── models/                   # Trained models├── data/                     # Data storage
-
-├── tests/                    # Test suite│   ├── raw_audio/            # Original recordings
-
-└── docs/                     # Documentation│   ├── transcripts/          # ASR outputs
-
-```│   └── corrections/          # Manual corrections
-
-├── models/                   # Trained models
-
----├── tests/                    # Test suite
-
-└── docs/                     # Documentation
-
-## Technology Stack```
-
-
-
-### Backend---
-
-
-
-- **Python 3.8+** — Core language## Technology Stack
-
-- **OpenAI Whisper** — Automatic speech recognition
-
-- **FastAPI** — REST API framework### Backend
-
-- **Transformers** — Hugging Face NLP models
-
-- **PyTorch** — Deep learning framework- **Python 3.8+** — Core language
-
-- **OpenAI Whisper** — Automatic speech recognition
-
-### Frontend- **FastAPI** — REST API framework
-
-- **Transformers** — Hugging Face NLP models
-
-- **Electron** — Desktop application framework- **PyTorch** — Deep learning framework
-
-- **HTML/CSS/JavaScript** — UI implementation
-
-- **Fetch API** — Backend communication### Frontend
-
-
-
-### ML Models (Planned)- **Electron** — Desktop application framework
-
-- **HTML/CSS/JavaScript** — UI implementation
-
-- **Whisper (base/small)** — Speech-to-text- **Fetch API** — Backend communication
-
-- **MT5-small** — Grammar correction & summarization
-
-- **Sentence-BERT** — Semantic similarity### ML Models (Planned)
-
-
-
----- **Whisper (base/small)** — Speech-to-text
-
-- **MT5-small** — Grammar correction & summarization
-
-## Current Status- **Sentence-BERT** — Semantic similarity
-
-
-
-**Version:** 0.1.0 Alpha---
-
-
-
-**Working:**## Current Status
-
-
-
-- ✅ Audio upload and transcription**Version:** 0.1.0 Alpha
-
-- ✅ Manual annotation interface
-
-- ✅ Transcript management**Working:**
-
-- ✅ Desktop application
-
-- ✅ Audio upload and transcription
-
-**In Development:**- ✅ Manual annotation interface
-
-- ✅ Transcript management
-
-- 🔄 Automatic error correction- ✅ Desktop application
-
-- 🔄 Automatic summarization
-
-- 🔄 Model training pipeline**In Development:**
-
-
-
-**Not Started:**- 🔄 Automatic error correction
-
-- 🔄 Automatic summarization
-
-- ⏳ Real classroom data collection- 🔄 Model training pipeline
-
-- ⏳ Fine-tuned models
-
-- ⏳ Comprehensive testing**Not Started:**
-
-- ⏳ Production deployment
-
-- ⏳ Real classroom data collection
-
-> 📖 For detailed status, see [Project Status](docs/project/status.md).- ⏳ Fine-tuned models
-
-- ⏳ Comprehensive testing
-
----- ⏳ Production deployment
-
-
-
-## Roadmap> 📖 For detailed status, see [Project Status](docs/project/status.md).
-
-
-
-### Phase 1: Foundation ✅ Complete---
-
-
-
-- ✅ Project setup and infrastructure## Roadmap
-
-- ✅ Whisper ASR integration
-
-- ✅ Desktop application### Phase 1: Foundation ✅ Complete
-
-- ✅ Basic API
-
-- ✅ Project setup and infrastructure
-
-### Phase 2: Core ML 🔄 In Progress- ✅ Whisper ASR integration
-
-- ✅ Desktop application
-
-- 🔄 Correction module implementation- ✅ Basic API
-
-- 🔄 Summarization module implementation
-
-- 🔄 Evaluation framework### Phase 2: Core ML 🔄 In Progress
-
-
-
-### Phase 3: Data & Training ⏳ Upcoming- 🔄 Correction module implementation
-
-- 🔄 Summarization module implementation
-
-- ⏳ UCLM data collection (20-40 hours)- 🔄 Evaluation framework
-
-- ⏳ Manual annotation
-
-- ⏳ Model fine-tuning### Phase 3: Data & Training ⏳ Upcoming
-
-- ⏳ Evaluation and iteration
-
-- ⏳ UCLM data collection (20-40 hours)
-
-### Phase 4: Production ⏳ Upcoming- ⏳ Manual annotation
-
-- ⏳ Model fine-tuning
-
-- ⏳ Comprehensive testing- ⏳ Evaluation and iteration
-
-- ⏳ Documentation completion
-
-- ⏳ Deployment and distribution### Phase 4: Production ⏳ Upcoming
-
-- ⏳ User training
-
-- ⏳ Comprehensive testing
-
-> 📖 For detailed roadmap, see [Roadmap](docs/project/roadmap.md).- ⏳ Documentation completion
-
-- ⏳ Deployment and distribution
-
----- ⏳ User training
-
-
-
-## Documentation> 📖 For detailed roadmap, see [Roadmap](docs/project/roadmap.md).
-
-
-
-- **[Installation Guide](docs/setup/installation.md)** — Setup instructions## Architecture
-
-- **[Electron Setup](docs/setup/electron-setup.md)** — Desktop app guide
-
-- **[Project Status](docs/project/status.md)** — Current progress tracker```
-
-- **[Roadmap](docs/project/roadmap.md)** — Future plans                                     
-
-- **[Changelog](docs/project/changelog.md)** — Version history      Electron Desktop App           
-
-- **[Architecture](docs/project/architecture.md)** — System design                                   
-
-- **[Data Collection Plan](docs/project/data-collection-plan.md)** — Dataset planning     React-like UI (Vanilla JS)   
-
-     - Upload Interface            
-
----     - Transcript Viewer           
-
-     - Annotation Editor           
-
-## Development     - Settings Panel              
-
-             ,                     
-
-### Setup Development Environment               HTTP REST API         
-
-              <                       
-
-```bash               
-
-# Install Python dependencies              �                       
-
-pip install -r requirements-electron.txt     FastAPI Backend (Python)         
-
-                                   
-
-# Install Node.js dependencies     ASR Module (Whisper)          
-
-cd webapp/electron     Correction Module (MT5)       
-
-npm install     Summarization (MT5)           
-
-     Evaluation Metrics            
-
-# Run in development mode                                   
-
-npm run dev                                      
-
-``````
-
-
-
-### Running TestsFor detailed architecture, see [Architecture](docs/project/architecture.md).
-
-
-
-```bash---
-
-# Run Python tests
-
-pytest tests/## Project Structure
-
-
-
-# Run with coverage```
-
-pytest --cov=src tests/Pulox/
-
-```   src/                          # Python source code
-
-      asr/                      # Speech recognition
-
-### Building for Distribution         whisper_asr.py        #  Whisper integration
-
-      correction/               # Error correction (in dev)
-
-```bash      summarization/            # Summarization (in dev)
-
-# Build Windows installer      evaluation/               # Metrics & benchmarks
-
-cd webapp/electron      utils/                    # Utilities
-
-npm run build          annotation_tool.py    #  Streamlit annotation UI
-
-```   webapp/
-
-      api.py                    #  FastAPI backend
-
-Output: `dist/Pulox Setup 0.1.0.exe`      electron/                 #  Desktop application
-
-          main.js               # Electron main process
-
----          preload.js            # Security bridge
-
-          renderer/             # Frontend UI
-
-## API Reference   data/                         # Data storage
-
-      raw_audio/                # Original recordings
-
-### Transcription Endpoints      transcripts/              # ASR outputs
-
-      corrections/              # Manual corrections
-
-```http      summaries/                # Generated summaries
-
-POST /upload            # Upload audio file   models/                       # Trained models
-
-POST /transcribe        # Start transcription   notebooks/                    # Jupyter notebooks (in dev)
-
-GET  /transcripts       # List all transcripts   tests/                        # Test suite (in dev)
-
-GET  /transcripts/{id}  # Get specific transcript   docs/                         # Documentation
-
-GET  /audio/{filename}  # Download audio file   configs/                      # Configuration files (in dev)
-
-``````
-
-
-
-### Annotation Endpoints---
-
-
-
-```http## Technology Stack
-
-POST /corrections       # Save correction
-
-GET  /corrections/{id}  # Get specific correction### Backend
-
-GET  /corrections       # List all corrections- **Python 3.8+** - Core language
-
-```- **OpenAI Whisper** - Automatic speech recognition
-
-- **FastAPI** - REST API framework
-
-### Future Endpoints (Planned)- **Transformers** - Hugging Face NLP models
-
-- **PyTorch** - Deep learning framework
-
-```http
-
-POST /correct           # Auto-correct transcript### Frontend
-
-POST /summarize         # Generate summary- **Electron** - Desktop application framework
-
-POST /batch/transcribe  # Batch processing- **HTML/CSS/JavaScript** - UI implementation
-
-```- **Fetch API** - Backend communication
-
-
-
----### ML Models (Planned)
-
-- **Whisper (base/small)** - Speech-to-text
-
-## Contributing- **MT5-small** - Grammar correction & summarization
-
-- **Sentence-BERT** - Semantic similarity
-
-We welcome contributions! Areas where help is needed:
+- ðŸŽ™ï¸ **Automatic Transcription** - OpenAI Whisper for accurate speech-to-text
+- âœï¸ **Error Correction** - Post-ASR grammar and spelling correction (in development)
+- ðŸ“ **Summarization** - Automatic lecture summary generation (in development)
+- ðŸŒ **Bilingual Support** - Handles English, Tagalog, and code-switched content
+- ðŸ’» **Desktop App** - Modern Electron-based interface
+- ðŸ”§ **Annotation Tools** - Manual correction and quality improvement
 
 ---
 
-- 🤖 **ML Development** — Correction and summarization modules
+## Quick Start
 
-- 🎙️ **Data Collection** — Recording classroom lectures## Current Status
+### Prerequisites
 
-- ✏️ **Data Annotation** — Transcription correction
+- Python 3.8+ â€” [Download](https://www.python.org/downloads/)
+- Node.js 16+ â€” [Download](https://nodejs.org/)
+- FFmpeg â€” [Installation Guide](docs/setup/installation.md#issue-5-ffmpeg-not-found)
 
-- 🧪 **Testing** — Write tests and find bugs**Version:** 0.1.0 Alpha
+### Installation
 
-- 📚 **Documentation** — Improve docs and guides
+1. Clone or download the project
 
-**Working:**
+   ```bash
+   cd Pulox
+   ```
 
-----  Audio upload and transcription
+2. Run the installer
 
--  Manual annotation interface
+   ```bash
+   scripts/install_electron_deps.bat
+   ```
 
-## License-  Transcript management
+3. Start the application
 
--  Desktop application
+   ```bash
+   scripts/run_electron_dev.bat
+   ```
 
-MIT License — see [LICENSE](LICENSE) for details.
-
-**In Development:**
-
----- � Automatic error correction
-
-- � Automatic summarization
-
-## Acknowledgments- � Model training pipeline
-
-
-
-- **OpenAI Whisper** — State-of-the-art ASR**Not Started:**
-
-- **Hugging Face** — Transformers library- L Real classroom data collection
-
-- **FastAPI** — Modern Python web framework- L Fine-tuned models
-
-- **Electron** — Cross-platform desktop apps- L Comprehensive testing
-
-- L Production deployment
+> ðŸ“– For detailed instructions, see the [Installation Guide](docs/setup/installation.md).
 
 ---
 
-For detailed status, see [Project Status](docs/project/status.md).
+## Usage
 
-## FAQ
+### Transcribing Audio
+
+1. Launch Pulox and click **Upload & Transcribe**
+2. Drag and drop an audio file (WAV, MP3, M4A, etc.)
+3. Select language and model size
+4. Click **Start Transcription**
+
+### Viewing & Annotating
+
+- Browse transcripts in the **Transcripts** tab
+- Click **View** to see the full transcript
+- Click **Annotate** to make corrections and add metadata
+
+### Exporting Data
+
+- Transcripts: `data/transcripts/`
+- Corrections: `data/corrections/`
+- Access via file system or API
 
 ---
 
-**Q: Does this work on macOS or Linux?**  
+## Architecture
 
-A: The backend works on all platforms. The Electron app should work but is untested. Currently optimized for Windows.## Roadmap
+```
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚   Electron Desktop App          â”‚
+â”‚                                 â”‚
+â”‚  â€¢ Upload Interface             â”‚
+â”‚  â€¢ Transcript Viewer            â”‚
+â”‚  â€¢ Annotation Editor            â”‚
+â”‚  â€¢ Settings Panel               â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+             â”‚ HTTP REST API
+             â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚   FastAPI Backend (Python)      â”‚
+â”‚                                 â”‚
+â”‚  â€¢ ASR Module (Whisper)         â”‚
+â”‚  â€¢ Correction Module (MT5)      â”‚
+â”‚  â€¢ Summarization (MT5)          â”‚
+â”‚  â€¢ Evaluation Metrics           â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+```
 
-
-
-**Q: Can I use models other than Whisper?**  ### Phase 1: Foundation (Complete)
-
-A: Yes, you can modify `src/asr/whisper_asr.py` to use other ASR systems.-  Project setup and infrastructure
-
--  Whisper ASR integration
-
-**Q: How accurate is the transcription?**  -  Desktop application
-
-A: Depends on audio quality and language mix. Expect 80-90% accuracy with Whisper base model.-  Basic API
-
-
-
-**Q: Do I need a GPU?**  ### Phase 2: Core ML (In Progress)
-
-A: No, but GPU significantly speeds up transcription. The app works on CPU-only systems.- � Correction module implementation
-
-- � Summarization module implementation
-
-**Q: Can I use this for other languages?**  - � Evaluation framework
-
-A: Whisper supports 90+ languages. You'd need to modify the correction and summarization modules for other language pairs.
-
-### Phase 3: Data & Training (Upcoming)
-
-**Q: Is this production-ready?**  -  UCLM data collection (20-40 hours)
-
-A: No, this is alpha software. Transcription works well, but correction and summarization are still in development.-  Manual annotation
-
--  Model fine-tuning
-
-----  Evaluation and iteration
-
-
-
-**Status:** Alpha • **Version:** 0.1.0 • **Last Updated:** October 2025### Phase 4: Production (Upcoming)
-
--  Comprehensive testing
--  Documentation completion
--  Deployment and distribution
--  User training
-
-For detailed roadmap, see [Roadmap](docs/project/roadmap.md).
+> 📖 For detailed roadmap, see [Roadmap](docs/project/roadmap.md).
 
 ---
 
@@ -823,3 +233,4 @@ A: No, this is alpha software. Transcription works well, but correction and summ
 ---
 
 **Status:** Alpha • **Version:** 0.1.0 • **Last Updated:** October 2025
+
